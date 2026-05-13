@@ -156,6 +156,12 @@ Resources:
       AutoMinorVersionUpgrade: true
 
 Outputs:
+  DocDbClusterArn:
+    Value: !Sub 'arn:aws:rds:${AWS::Region}:${AWS::AccountId}:cluster:${Cluster}'
+    Description: >
+      DocumentDB cluster ARN (uses the rds service prefix per AWS
+      convention for DocDB). Pass to the optional pinkconnect-backup
+      stack as DocDbClusterArn so AWS Backup can select this cluster.
   DocDbEndpoint:
     Value: !GetAtt Cluster.Endpoint
     Description: Cluster endpoint hostname (writes go here, reads round-robin).
