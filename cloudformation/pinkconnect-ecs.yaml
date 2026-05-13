@@ -139,12 +139,37 @@ Parameters:
       (default) = no WAF. Recommended for production: associate a Web
       ACL with at least rate-based + AWSManagedRulesCommonRuleSet.
 
+  CreateDnsRecord:
+    Type: String
+    AllowedValues: [ 'true', 'false' ]
+    Default: 'true'
+    Description: >
+      'true' (default) creates a Route53 A-alias for CustomDomainName
+      pointing at the ALB — the normal smoke/standalone deployment
+      shape. Set 'false' when fronting PinkConnect with CloudFront
+      (via the optional pinkconnect-cdn stack) — the CDN stack owns
+      the customer-facing DNS record in that mode and the ALB is
+      reached via OriginHostname instead.
+
+  OriginHostname:
+    Type: String
+    Default: ''
+    Description: >
+      Optional second Route53 A-alias for the ALB at a different
+      hostname (e.g. origin-prod.example.com). Used by the CDN stack
+      as the CloudFront → ALB origin so HTTPS-to-origin can validate
+      against the ALB cert. Empty (default) = no extra record. When
+      set, the customer's ALB cert must cover this hostname (a
+      wildcard cert on the parent domain is easiest).
+
 Conditions:
   UsageTrackingEnabledCond: !Equals [ !Ref UsageTrackingEnabled, 'true' ]
   AuthModeInternalCond: !Equals [ !Ref AuthMode, internal ]
   InternalAlbCond: !Equals [ !Ref InternalAlb, 'true' ]
   HasCustomKmsKeyCond: !Not [ !Equals [ !Ref KmsKeyArn, '' ] ]
   HasWebAclCond: !Not [ !Equals [ !Ref WebAclArn, '' ] ]
+  CreateDnsRecordCond: !Equals [ !Ref CreateDnsRecord, 'true' ]
+  HasOriginHostnameCond: !Not [ !Equals [ !Ref OriginHostname, '' ] ]
 
 Resources:
 
@@ -471,12 +496,30 @@ Resources:
         ScaleOutCooldown: 30
 
   # ---------- DNS ----------
+  # Customer-facing record: skipped when CreateDnsRecord=false (e.g.
+  # when fronting with CloudFront via pinkconnect-cdn.yaml, which owns
+  # the CustomDomainName record in that mode).
 
   DnsRecord:
     Type: AWS::Route53::RecordSet
+    Condition: CreateDnsRecordCond
     Properties:
       HostedZoneId: !Ref Route53HostedZoneId
       Name: !Ref CustomDomainName
+      Type: A
+      AliasTarget:
+        DNSName: !GetAtt LoadBalancer.DNSName
+        HostedZoneId: !GetAtt LoadBalancer.CanonicalHostedZoneID
+        EvaluateTargetHealth: false
+
+  # Optional second record at OriginHostname, used as the CloudFront
+  # origin so HTTPS-to-origin validates against the ALB cert.
+  OriginDnsRecord:
+    Type: AWS::Route53::RecordSet
+    Condition: HasOriginHostnameCond
+    Properties:
+      HostedZoneId: !Ref Route53HostedZoneId
+      Name: !Ref OriginHostname
       Type: A
       AliasTarget:
         DNSName: !GetAtt LoadBalancer.DNSName
