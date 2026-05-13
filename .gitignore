@@ -1,0 +1,14 @@
+# The admin app zip is the shipped artifact. The extracted directory is
+# a work tree containing keys, .env, and node_modules — never commit it.
+pinkfish-connections-admin-app-main/
+
+# Binary artifacts — distributed out of band (see DOWNLOADS section in
+# SETUP-GUIDE.md). Too large for git; deliver via S3 / signed link / direct
+# transfer instead.
+pinkconnect-*.tar.gz
+pinkfish-connections-admin-app-main.zip
+
+# Generic Node / editor noise
+node_modules/
+.DS_Store
+*.log

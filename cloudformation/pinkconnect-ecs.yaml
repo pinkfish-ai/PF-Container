@@ -1,0 +1,404 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  PinkConnect ECS service (self-host). Creates the Fargate cluster, ALB,
+  target group, task definition (arm64), service, autoscaling, log group,
+  and Route53 A-alias. Networking is consumed via parameters from the
+  pinkconnect-networking stack; the MongoDB-compatible cluster is consumed
+  via the ${SsmPrefix}/mongodb-uri SSM parameter.
+
+Parameters:
+
+  EnvironmentName:
+    Type: String
+    Default: pinkconnect
+
+  # ---- Network (outputs of pinkconnect-networking stack) ----
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+  PublicSubnetAId:
+    Type: AWS::EC2::Subnet::Id
+  PublicSubnetBId:
+    Type: AWS::EC2::Subnet::Id
+  PrivateSubnetAId:
+    Type: AWS::EC2::Subnet::Id
+  PrivateSubnetBId:
+    Type: AWS::EC2::Subnet::Id
+
+  # ---- Image + URLs ----
+  ContainerImage:
+    Type: String
+    Description: ECR image URI for the PinkConnect image (arm64 only).
+
+  CallbackUrl:
+    Type: String
+    Description: https://<CustomDomainName>/connect/callback
+
+  CustomDomainName:
+    Type: String
+  Route53HostedZoneId:
+    Type: AWS::Route53::HostedZone::Id
+  CertificateArn:
+    Type: String
+
+  # ---- Secrets prefixes ----
+  SsmPrefix:
+    Type: String
+    Default: /pinkconnect
+  SecretStorePrefix:
+    Type: String
+    Default: pinkconnect/
+
+  # ---- Feature flags ----
+  UsageTrackingEnabled:
+    Type: String
+    AllowedValues: [ 'true', 'false' ]
+    Default: 'false'
+
+  AuthMode:
+    Type: String
+    AllowedValues: [ internal, external ]
+    Default: internal
+  AuthJwksUrl:
+    Type: String
+    Default: ''
+  AuthIssuer:
+    Type: String
+    Default: ''
+  AuthAudience:
+    Type: String
+    Default: ''
+
+  # ---- Capacity ----
+  DesiredCount:
+    Type: Number
+    Default: 1
+    MinValue: 1
+  MaxCount:
+    Type: Number
+    Default: 5
+    MinValue: 1
+  TaskCpu:
+    Type: String
+    Default: '1024'
+    AllowedValues: [ '512', '1024', '2048', '4096' ]
+  TaskMemory:
+    Type: String
+    Default: '2048'
+
+Conditions:
+  UsageTrackingEnabledCond: !Equals [ !Ref UsageTrackingEnabled, 'true' ]
+  AuthModeInternalCond: !Equals [ !Ref AuthMode, internal ]
+
+Resources:
+
+  # ---------- Security groups ----------
+
+  AlbSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub '${EnvironmentName} ALB SG'
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - { Key: Name, Value: !Sub '${EnvironmentName}-alb-sg' }
+
+  TaskSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub '${EnvironmentName} task SG'
+      VpcId: !Ref VpcId
+      Tags:
+        - { Key: Name, Value: !Sub '${EnvironmentName}-task-sg' }
+
+  TaskIngressFromAlb:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref TaskSecurityGroup
+      SourceSecurityGroupId: !Ref AlbSecurityGroup
+      IpProtocol: tcp
+      FromPort: 8090
+      ToPort: 8090
+
+  # ---------- Cluster ----------
+
+  EcsCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Sub '${EnvironmentName}-cluster'
+      ClusterSettings:
+        - { Name: containerInsights, Value: enabled }
+
+  # ---------- Load balancer ----------
+
+  LoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: !Sub '${EnvironmentName}-alb'
+      Scheme: internet-facing
+      Type: application
+      Subnets:
+        - !Ref PublicSubnetAId
+        - !Ref PublicSubnetBId
+      SecurityGroups: [ !Ref AlbSecurityGroup ]
+
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub '${EnvironmentName}-tg'
+      Port: 8090
+      Protocol: HTTP
+      TargetType: ip
+      VpcId: !Ref VpcId
+      HealthCheckPath: /health/ready
+      HealthCheckIntervalSeconds: 30
+      HealthCheckTimeoutSeconds: 10
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 5
+      Matcher: { HttpCode: '200' }
+      TargetGroupAttributes:
+        - { Key: deregistration_delay.timeout_seconds, Value: '30' }
+
+  HttpListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - Type: redirect
+          RedirectConfig:
+            Protocol: HTTPS
+            Port: '443'
+            StatusCode: HTTP_301
+
+  HttpsListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 443
+      Protocol: HTTPS
+      Certificates:
+        - CertificateArn: !Ref CertificateArn
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref TargetGroup
+
+  # ---------- IAM ----------
+
+  ExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${EnvironmentName}-exec-role'
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ecs-tasks.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Policies:
+        - PolicyName: SsmAndKms
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ssm:GetParameter
+                  - ssm:GetParameters
+                Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${SsmPrefix}/*'
+              - Effect: Allow
+                Action: kms:Decrypt
+                Resource: '*'
+
+  TaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${EnvironmentName}-task-role'
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ecs-tasks.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: SecretsManagerScoped
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                  - secretsmanager:DescribeSecret
+                  - secretsmanager:CreateSecret
+                  - secretsmanager:UpdateSecret
+                  - secretsmanager:PutSecretValue
+                  - secretsmanager:DeleteSecret
+                  - secretsmanager:ListSecrets
+                  - secretsmanager:TagResource
+                Resource: '*'
+
+  # ---------- Logging ----------
+
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/ecs/${EnvironmentName}'
+      RetentionInDays: 14
+
+  # ---------- Task definition ----------
+
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub '${EnvironmentName}-task'
+      Cpu: !Ref TaskCpu
+      Memory: !Ref TaskMemory
+      NetworkMode: awsvpc
+      RequiresCompatibilities: [ FARGATE ]
+      RuntimePlatform:
+        CpuArchitecture: ARM64
+        OperatingSystemFamily: LINUX
+      ExecutionRoleArn: !GetAtt ExecutionRole.Arn
+      TaskRoleArn: !GetAtt TaskRole.Arn
+      ContainerDefinitions:
+        - Name: pinkconnect
+          Image: !Ref ContainerImage
+          Essential: true
+          PortMappings:
+            - ContainerPort: 8090
+              Protocol: tcp
+          Environment:
+            - { Name: NODE_ENV, Value: production }
+            - { Name: PORT, Value: '8090' }
+            - { Name: CALLBACK_URL, Value: !Ref CallbackUrl }
+            - { Name: SECRET_STORE_PROVIDER, Value: aws }
+            - { Name: SECRET_STORE_PREFIX, Value: !Ref SecretStorePrefix }
+            - { Name: USAGE_TRACKING_ENABLED, Value: !Ref UsageTrackingEnabled }
+            - { Name: AUTH_MODE, Value: !Ref AuthMode }
+            - { Name: AUTH_JWKS_URL, Value: !Ref AuthJwksUrl }
+            - { Name: AUTH_ISSUER, Value: !Ref AuthIssuer }
+            - { Name: AUTH_AUDIENCE, Value: !Ref AuthAudience }
+          Secrets:
+            - Name: MONGODB_URI
+              ValueFrom: !Sub '${SsmPrefix}/mongodb-uri'
+            - Name: ADMIN_TOKEN
+              ValueFrom: !Sub '${SsmPrefix}/admin-token'
+            - Name: OAUTH_ENCRYPTION_KEY
+              ValueFrom: !Sub '${SsmPrefix}/oauth-encryption-key'
+            - Name: TOKEN_ENCRYPTION_KEY
+              ValueFrom: !Sub '${SsmPrefix}/token-encryption-key'
+            - !If
+              - AuthModeInternalCond
+              - Name: JWT_PUBLIC_KEY
+                ValueFrom: !Sub '${SsmPrefix}/jwt-public-key'
+              - !Ref AWS::NoValue
+            - !If
+              - UsageTrackingEnabledCond
+              - Name: UPSTASH_RATELIMIT_REDIS_URL
+                ValueFrom: !Sub '${SsmPrefix}/upstash-ratelimit-redis-url'
+              - !Ref AWS::NoValue
+            - !If
+              - UsageTrackingEnabledCond
+              - Name: UPSTASH_RATELIMIT_REDIS_TOKEN
+                ValueFrom: !Sub '${SsmPrefix}/upstash-ratelimit-redis-token'
+              - !Ref AWS::NoValue
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: pinkconnect
+
+  # ---------- Service ----------
+
+  Service:
+    Type: AWS::ECS::Service
+    DependsOn: [ HttpsListener ]
+    Properties:
+      ServiceName: !Sub '${EnvironmentName}-svc'
+      Cluster: !Ref EcsCluster
+      TaskDefinition: !Ref TaskDefinition
+      LaunchType: FARGATE
+      DesiredCount: !Ref DesiredCount
+      DeploymentConfiguration:
+        MinimumHealthyPercent: 100
+        MaximumPercent: 200
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: DISABLED
+          Subnets:
+            - !Ref PrivateSubnetAId
+            - !Ref PrivateSubnetBId
+          SecurityGroups: [ !Ref TaskSecurityGroup ]
+      LoadBalancers:
+        - ContainerName: pinkconnect
+          ContainerPort: 8090
+          TargetGroupArn: !Ref TargetGroup
+      HealthCheckGracePeriodSeconds: 120
+
+  # ---------- Autoscaling ----------
+
+  AutoscalingRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal: { Service: application-autoscaling.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceAutoscaleRole
+
+  ScalableTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      MaxCapacity: !Ref MaxCount
+      MinCapacity: !Ref DesiredCount
+      ResourceId: !Sub 'service/${EcsCluster}/${Service.Name}'
+      ScalableDimension: ecs:service:DesiredCount
+      ServiceNamespace: ecs
+      RoleARN: !GetAtt AutoscalingRole.Arn
+
+  CpuScalingPolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub '${EnvironmentName}-cpu-scale'
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref ScalableTarget
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 60
+        PredefinedMetricSpecification:
+          PredefinedMetricType: ECSServiceAverageCPUUtilization
+        ScaleInCooldown: 60
+        ScaleOutCooldown: 30
+
+  # ---------- DNS ----------
+
+  DnsRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref Route53HostedZoneId
+      Name: !Ref CustomDomainName
+      Type: A
+      AliasTarget:
+        DNSName: !GetAtt LoadBalancer.DNSName
+        HostedZoneId: !GetAtt LoadBalancer.CanonicalHostedZoneID
+        EvaluateTargetHealth: false
+
+Outputs:
+  AlbDnsName:
+    Value: !GetAtt LoadBalancer.DNSName
+  PublicUrl:
+    Value: !Sub 'https://${CustomDomainName}'
+  ClusterName:
+    Value: !Ref EcsCluster
+  ServiceName:
+    Value: !GetAtt Service.Name
+  TaskSecurityGroupId:
+    Value: !Ref TaskSecurityGroup
+    Description: Authorize this SG on your MongoDB cluster's SG, port 27017.

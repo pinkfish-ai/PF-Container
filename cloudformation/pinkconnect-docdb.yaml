@@ -1,0 +1,87 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  PinkConnect (self-host) — Amazon DocumentDB cluster. Single-instance
+  db.t4g.medium for dev/smoke. The cluster lives in the private subnets
+  of the networking stack and has its own security group. After the ecs
+  stack is deployed, authorize the ECS task SG as ingress on
+  DocDbSecurityGroupId port 27017 (one-time CLI command — see README).
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Default: pinkconnect
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+  PrivateSubnetAId:
+    Type: AWS::EC2::Subnet::Id
+  PrivateSubnetBId:
+    Type: AWS::EC2::Subnet::Id
+  MasterUsername:
+    Type: String
+    Default: pinkconnect
+    MinLength: 1
+  MasterUserPassword:
+    Type: String
+    NoEcho: true
+    MinLength: 8
+    Description: DocumentDB master user password (>= 8 chars, no '@', '/', or '"').
+  InstanceClass:
+    Type: String
+    Default: db.t4g.medium
+    AllowedValues:
+      - db.t3.medium
+      - db.t4g.medium
+      - db.r6g.large
+      - db.r6g.xlarge
+
+Resources:
+
+  SubnetGroup:
+    Type: AWS::DocDB::DBSubnetGroup
+    Properties:
+      DBSubnetGroupName: !Sub '${EnvironmentName}-docdb-subnet-group'
+      DBSubnetGroupDescription: !Sub '${EnvironmentName} DocumentDB subnets'
+      SubnetIds:
+        - !Ref PrivateSubnetAId
+        - !Ref PrivateSubnetBId
+
+  ClusterSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub '${EnvironmentName} DocumentDB SG'
+      VpcId: !Ref VpcId
+      Tags:
+        - { Key: Name, Value: !Sub '${EnvironmentName}-docdb-sg' }
+
+  Cluster:
+    Type: AWS::DocDB::DBCluster
+    DeletionPolicy: Snapshot
+    UpdateReplacePolicy: Snapshot
+    Properties:
+      DBClusterIdentifier: !Sub '${EnvironmentName}-docdb'
+      MasterUsername: !Ref MasterUsername
+      MasterUserPassword: !Ref MasterUserPassword
+      DBSubnetGroupName: !Ref SubnetGroup
+      VpcSecurityGroupIds:
+        - !Ref ClusterSecurityGroup
+      StorageEncrypted: true
+
+  Instance:
+    Type: AWS::DocDB::DBInstance
+    Properties:
+      DBClusterIdentifier: !Ref Cluster
+      DBInstanceIdentifier: !Sub '${EnvironmentName}-docdb-1'
+      DBInstanceClass: !Ref InstanceClass
+
+Outputs:
+  DocDbEndpoint:
+    Value: !GetAtt Cluster.Endpoint
+    Description: Cluster endpoint hostname.
+  DocDbPort:
+    Value: !GetAtt Cluster.Port
+  DocDbSecurityGroupId:
+    Value: !Ref ClusterSecurityGroup
+    Description: Authorize the ECS task SG as ingress on this SG, port 27017.
+  MongoUriTemplate:
+    Value: !Sub 'mongodb://${MasterUsername}:<PASSWORD>@${Cluster.Endpoint}:${Cluster.Port}/?tls=true&tlsCAFile=/app/global-bundle.pem&replicaSet=rs0&readPreference=secondaryPreferred&retryWrites=false&authMechanism=SCRAM-SHA-1&authSource=admin'
+    Description: Substitute <PASSWORD> with MasterUserPassword and store in SSM as ${SsmPrefix}/mongodb-uri.
