@@ -82,9 +82,27 @@ console.log(jwt.sign(
 echo "$TOKEN"
 ```
 
-`providerId` and `selectedOrg` are the user identity claims the
-connection record was created under — keep them matching or PinkConnect
-won't find the connection.
+**About `providerId` and `selectedOrg`.** These are the multi-tenant
+identity claims PinkConnect uses to scope every connection. Think of
+them as the user identifier and the org/tenant they belong to — every
+connection record in the database is owned by a `(selectedOrg,
+providerId)` pair, and the proxy only returns connections that match
+the claims in the JWT you present.
+
+In production these come from your own auth system: when an end user
+in org `acme-co` named user `u_42` opens your app, you mint a JWT with
+`selectedOrg: "acme-co", providerId: "u_42"`, and from then on every
+connection that user creates belongs to that pair. Another user in the
+same org has a different `providerId` and sees a different set of
+connections; a user in a different org sees nothing of acme-co's.
+
+In this smoke test those values are hardcoded as `local-dev-user` /
+`local-dev-org` (the defaults the admin app ships with in
+`.env.example`), so the connection you created during § 9 belongs to
+that pair. If you change them in the JWT you mint, PinkConnect treats
+you as a different user and `/manage/user-connections` returns an
+empty list — your connection is still there, just owned by the other
+identity. Match the values you used when creating the connection.
 
 ### 2. Find the connection ID
 
