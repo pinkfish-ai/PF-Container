@@ -28,6 +28,12 @@ If you'd rather drive the install yourself rather than through Claude,
 [`claude-setup.md`](./claude-setup.md) is a working human-readable doc
 too — it's just denser than a normal install guide.
 
+Want to swap in your own database, run on Kubernetes instead of
+Fargate, or skip the ALB? See
+[`alternate-components.md`](./alternate-components.md) — the container's
+actual runtime contract is narrower than what `claude-setup.md`
+provisions.
+
 ## Verify it's running
 
 When the install finishes, PinkConnect responds on the domain you
