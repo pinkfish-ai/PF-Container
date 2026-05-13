@@ -27,7 +27,7 @@ This git repository contains the infrastructure code and documentation:
 
 | File | Purpose |
 |------|---------|
-| `SETUP-GUIDE.md` | This document. |
+| `README.md` | This document. |
 | `cloudformation/pinkconnect-networking.yaml` | VPC, subnets, NAT, route tables. |
 | `cloudformation/pinkconnect-docdb.yaml` | Amazon DocumentDB cluster (MongoDB-wire compatible). |
 | `cloudformation/pinkconnect-ecs.yaml` | ALB, Fargate cluster, task def, service, autoscaling, Route53 alias. |
