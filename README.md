@@ -55,13 +55,73 @@ content-type: application/json; charset=utf-8
   land. Re-check phases 6 and 7 of `claude-setup.md`, or ask Claude
   to diagnose.
 
-## What's next
+## Make a proxy call
 
-Once the smoke test passes you have a working PinkConnect at
-`https://connect.<your-domain>`. To actually use it, you need to (a)
-mint signed JWTs from your own app or the bundled admin app, and
-(b) deploy + connect at least one service. `claude-setup.md` § 9
-walks through an OpenWeather example end-to-end as a smoke test.
+Assuming you've followed `claude-setup.md` § 9 to deploy the
+`openweather` service and create a connection with your API key, this
+is how you hit the real API through PinkConnect:
+
+### 1. Mint a JWT
+
+PinkConnect verifies user JWTs signed by the keypair you generated
+during install. The bundled admin app already has `jsonwebtoken`
+installed, so the cheapest mint is a node one-liner from inside that
+directory:
+
+```bash
+TOKEN=$(cd pinkfish-connections-admin-app-main && node -e "
+const jwt = require('jsonwebtoken');
+const fs = require('fs');
+const key = fs.readFileSync('keys/private.pem');
+console.log(jwt.sign(
+  { type: 'user', providerId: 'local-dev-user', selectedOrg: 'local-dev-org' },
+  key,
+  { algorithm: 'RS256', expiresIn: '1h' }
+));
+")
+echo "$TOKEN"
+```
+
+`providerId` and `selectedOrg` are the user identity claims the
+connection record was created under — keep them matching or PinkConnect
+won't find the connection.
+
+### 2. Find the connection ID
+
+```bash
+curl -s -H "auth-token: $TOKEN" \
+  https://connect.<your-domain>/manage/user-connections | jq
+```
+
+Returns an array; grab the `id` for your openweather connection (it
+also shows `identifier` like `0786eb07****` so you can tell which key
+it is).
+
+### 3. Make the proxy call
+
+PinkConnect's proxy URL pattern is:
+
+```
+GET https://connect.<your-domain>/connect/<service_key>/<connection_id>/<upstream-path>
+```
+
+For OpenWeather:
+
+```bash
+CONN_ID=<from step 2>
+curl -s -H "auth-token: $TOKEN" \
+  "https://connect.<your-domain>/connect/openweather/${CONN_ID}/data/2.5/weather?lat=44.34&lon=10.99" \
+  | jq
+```
+
+Expected: a real OpenWeather JSON response (`{"coord":{...},"weather":[...],"main":{"temp":...}}`).
+PinkConnect decrypted your stored API key, injected it as `appid` on
+the upstream request per the openweather service definition, and
+returned the response.
+
+The same pattern works for every service in the catalog — swap
+`openweather` for the `service_key` and the path for whatever that
+provider exposes.
 
 ## Support
 
