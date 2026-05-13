@@ -1,21 +1,24 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: >
-  PinkConnect (self-host) — Amazon DocumentDB cluster. Single-instance
-  db.t4g.medium for dev/smoke. The cluster lives in the private subnets
-  of the networking stack and has its own security group. After the ecs
-  stack is deployed, authorize the ECS task SG as ingress on
-  DocDbSecurityGroupId port 27017 (one-time CLI command — see README).
+  PinkConnect (self-host) — Amazon DocumentDB cluster. Defaults to a
+  single db.t4g.medium for cheap smoke deploys; set InstanceCount to 2
+  or 3 (+ a larger InstanceClass) for production multi-AZ topology.
+  After the ecs stack is deployed, authorize the ECS task SG as ingress
+  on DocDbSecurityGroupId port 27017 (one-time CLI command — see
+  claude-setup.md § 7).
 
 Parameters:
   EnvironmentName:
     Type: String
     Default: pinkconnect
+
   VpcId:
     Type: AWS::EC2::VPC::Id
   PrivateSubnetAId:
     Type: AWS::EC2::Subnet::Id
   PrivateSubnetBId:
     Type: AWS::EC2::Subnet::Id
+
   MasterUsername:
     Type: String
     Default: pinkconnect
@@ -25,6 +28,7 @@ Parameters:
     NoEcho: true
     MinLength: 8
     Description: DocumentDB master user password (>= 8 chars, no '@', '/', or '"').
+
   InstanceClass:
     Type: String
     Default: db.t4g.medium
@@ -33,6 +37,59 @@ Parameters:
       - db.t4g.medium
       - db.r6g.large
       - db.r6g.xlarge
+      - db.r6g.2xlarge
+    Description: >
+      Per-instance class. db.t4g.medium (default) is the cheapest viable
+      option for dev/smoke. Production should use db.r6g.large or
+      larger; t-class is burstable and not suitable for sustained load.
+
+  InstanceCount:
+    Type: Number
+    Default: 1
+    AllowedValues: [ 1, 2, 3 ]
+    Description: >
+      How many DB instances to create across AZs. 1 = single-AZ
+      (default, dev/smoke only — no HA). 2 = primary + 1 replica
+      across AZs (HA, minimum for production). 3 = primary + 2 replicas
+      (extra read capacity).
+
+  BackupRetentionDays:
+    Type: Number
+    Default: 7
+    MinValue: 1
+    MaxValue: 35
+    Description: >
+      Automated backup retention in days. 1 = the bare minimum, fine
+      for smoke. 7 (default) covers a normal recovery window. Bump to
+      35 (the maximum) for compliance frameworks that need >7 days RPO.
+
+  PreferredBackupWindow:
+    Type: String
+    Default: '07:00-08:00'
+    Description: >
+      UTC window for automated backups. Default 07:00-08:00 UTC = early
+      morning Americas / late afternoon Asia — pick whatever's lowest-
+      traffic for your workload.
+
+  PreferredMaintenanceWindow:
+    Type: String
+    Default: 'sun:09:00-sun:10:00'
+    Description: >
+      UTC weekly maintenance window. Set to a low-traffic slot; AWS
+      applies engine patches here.
+
+  KmsKeyArn:
+    Type: String
+    Default: ''
+    Description: >
+      Customer-managed KMS CMK ARN for cluster storage encryption.
+      Empty (default) = AWS-managed key (alias/aws/rds). Required for
+      compliance frameworks that need BYOK.
+
+Conditions:
+  HasCustomKmsKeyCond: !Not [ !Equals [ !Ref KmsKeyArn, '' ] ]
+  HasReplica1Cond: !Or [ !Equals [ !Ref InstanceCount, 2 ], !Equals [ !Ref InstanceCount, 3 ] ]
+  HasReplica2Cond: !Equals [ !Ref InstanceCount, 3 ]
 
 Resources:
 
@@ -65,18 +122,46 @@ Resources:
       VpcSecurityGroupIds:
         - !Ref ClusterSecurityGroup
       StorageEncrypted: true
+      KmsKeyId: !If [ HasCustomKmsKeyCond, !Ref KmsKeyArn, !Ref AWS::NoValue ]
+      BackupRetentionPeriod: !Ref BackupRetentionDays
+      PreferredBackupWindow: !Ref PreferredBackupWindow
+      PreferredMaintenanceWindow: !Ref PreferredMaintenanceWindow
+      EnableCloudwatchLogsExports: [ audit, profiler ]
+      DeletionProtection: false  # set true via console for prod clusters
 
-  Instance:
+  InstancePrimary:
     Type: AWS::DocDB::DBInstance
     Properties:
       DBClusterIdentifier: !Ref Cluster
       DBInstanceIdentifier: !Sub '${EnvironmentName}-docdb-1'
       DBInstanceClass: !Ref InstanceClass
+      AutoMinorVersionUpgrade: true
+
+  InstanceReplica1:
+    Type: AWS::DocDB::DBInstance
+    Condition: HasReplica1Cond
+    Properties:
+      DBClusterIdentifier: !Ref Cluster
+      DBInstanceIdentifier: !Sub '${EnvironmentName}-docdb-2'
+      DBInstanceClass: !Ref InstanceClass
+      AutoMinorVersionUpgrade: true
+
+  InstanceReplica2:
+    Type: AWS::DocDB::DBInstance
+    Condition: HasReplica2Cond
+    Properties:
+      DBClusterIdentifier: !Ref Cluster
+      DBInstanceIdentifier: !Sub '${EnvironmentName}-docdb-3'
+      DBInstanceClass: !Ref InstanceClass
+      AutoMinorVersionUpgrade: true
 
 Outputs:
   DocDbEndpoint:
     Value: !GetAtt Cluster.Endpoint
-    Description: Cluster endpoint hostname.
+    Description: Cluster endpoint hostname (writes go here, reads round-robin).
+  DocDbReaderEndpoint:
+    Value: !GetAtt Cluster.ReadEndpoint
+    Description: Reader-only endpoint. Useful for app-level read/write split.
   DocDbPort:
     Value: !GetAtt Cluster.Port
   DocDbSecurityGroupId:
