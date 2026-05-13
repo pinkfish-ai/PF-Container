@@ -22,8 +22,7 @@ end-to-end; ~$150/mo to keep running.
   - `pinkconnect-<version>.tar.gz` — the container image
   - `pinkfish-connections-admin-app-main.zip` — the admin app
 
-  Email **pf-support@pinkfish.ai** to get them if you don't have
-  them already.
+  Contact Pinkfish to get them if you don't have them already.
 
 If you'd rather drive the install yourself rather than through Claude,
 [`claude-setup.md`](./claude-setup.md) is a working human-readable doc
@@ -66,5 +65,4 @@ walks through an OpenWeather example end-to-end as a smoke test.
 
 ## Support
 
-**pf-support@pinkfish.ai** — same address for support, binary
-deliveries, and license questions.
+Contact Pinkfish for support, binary deliveries, and license questions.
