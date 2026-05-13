@@ -73,6 +73,9 @@ Parameters:
     Type: Number
     Default: 1
     MinValue: 1
+    Description: >
+      Steady-state task count. Default 1 for smoke deploys; set to 2+
+      for production (one task per AZ minimum).
   MaxCount:
     Type: Number
     Default: 5
@@ -85,9 +88,47 @@ Parameters:
     Type: String
     Default: '2048'
 
+  # ---- Hardening flags ----
+  InternalAlb:
+    Type: String
+    AllowedValues: [ 'true', 'false' ]
+    Default: 'false'
+    Description: >
+      'true' makes the ALB internal-only (private subnets, no internet
+      ingress). Use when PinkConnect is reached over VPN / PrivateLink
+      / a corporate network only. Default 'false' = internet-facing.
+
+  KmsKeyArn:
+    Type: String
+    Default: ''
+    Description: >
+      Customer-managed KMS CMK ARN for SSM SecureString + Secrets
+      Manager encryption. Empty (default) = use AWS-managed keys. When
+      set, the task / execution roles scope kms:Decrypt + GenerateDataKey
+      to this exact key.
+
+  LogRetentionDays:
+    Type: Number
+    Default: 90
+    AllowedValues: [ 1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1827, 3653 ]
+    Description: >
+      CloudWatch Logs retention in days. Default 90 covers most SOC2 /
+      ISO27001 thresholds. Bump to 365+ for HIPAA / SOX / FedRAMP.
+
+  WebAclArn:
+    Type: String
+    Default: ''
+    Description: >
+      Optional AWS WAFv2 Web ACL ARN to associate with the ALB. Empty
+      (default) = no WAF. Recommended for production: associate a Web
+      ACL with at least rate-based + AWSManagedRulesCommonRuleSet.
+
 Conditions:
   UsageTrackingEnabledCond: !Equals [ !Ref UsageTrackingEnabled, 'true' ]
   AuthModeInternalCond: !Equals [ !Ref AuthMode, internal ]
+  InternalAlbCond: !Equals [ !Ref InternalAlb, 'true' ]
+  HasCustomKmsKeyCond: !Not [ !Equals [ !Ref KmsKeyArn, '' ] ]
+  HasWebAclCond: !Not [ !Equals [ !Ref WebAclArn, '' ] ]
 
 Resources:
 
@@ -142,11 +183,12 @@ Resources:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties:
       Name: !Sub '${EnvironmentName}-alb'
-      Scheme: internet-facing
+      Scheme: !If [ InternalAlbCond, internal, internet-facing ]
       Type: application
-      Subnets:
-        - !Ref PublicSubnetAId
-        - !Ref PublicSubnetBId
+      Subnets: !If
+        - InternalAlbCond
+        - [ !Ref PrivateSubnetAId, !Ref PrivateSubnetBId ]
+        - [ !Ref PublicSubnetAId, !Ref PublicSubnetBId ]
       SecurityGroups: [ !Ref AlbSecurityGroup ]
 
   TargetGroup:
@@ -191,6 +233,16 @@ Resources:
         - Type: forward
           TargetGroupArn: !Ref TargetGroup
 
+  # Optional WAF v2 Web ACL association. Only created when WebAclArn is
+  # provided. Web ACL itself lives outside this stack so customers can
+  # apply organization-wide rule sets without re-deploying PinkConnect.
+  WebAclAssociation:
+    Type: AWS::WAFv2::WebACLAssociation
+    Condition: HasWebAclCond
+    Properties:
+      ResourceArn: !Ref LoadBalancer
+      WebACLArn: !Ref WebAclArn
+
   # ---------- IAM ----------
 
   ExecutionRole:
@@ -213,9 +265,16 @@ Resources:
                   - ssm:GetParameter
                   - ssm:GetParameters
                 Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${SsmPrefix}/*'
+              # KMS decrypt is scoped to the alias used by SecureString SSM
+              # parameters by default. If you've put SSM parameters under a
+              # customer-managed CMK, pass its ARN as KmsKeyArn and we'll
+              # scope to that exact key instead of the AWS-managed alias.
               - Effect: Allow
                 Action: kms:Decrypt
-                Resource: '*'
+                Resource: !If
+                  - HasCustomKmsKeyCond
+                  - !Ref KmsKeyArn
+                  - !Sub 'arn:aws:kms:${AWS::Region}:${AWS::AccountId}:alias/aws/ssm'
 
   TaskRole:
     Type: AWS::IAM::Role
@@ -230,6 +289,10 @@ Resources:
         - PolicyName: SecretsManagerScoped
           PolicyDocument:
             Statement:
+              # Scoped to ${SecretStorePrefix}* — the namespace PinkConnect
+              # writes per-connection credentials under. Per-resource scoping
+              # works for all of these actions except ListSecrets, which is
+              # account-wide by design.
               - Effect: Allow
                 Action:
                   - secretsmanager:GetSecretValue
@@ -238,9 +301,20 @@ Resources:
                   - secretsmanager:UpdateSecret
                   - secretsmanager:PutSecretValue
                   - secretsmanager:DeleteSecret
-                  - secretsmanager:ListSecrets
                   - secretsmanager:TagResource
+                Resource: !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${SecretStorePrefix}*'
+              - Effect: Allow
+                Action: secretsmanager:ListSecrets
                 Resource: '*'
+              # Decrypt secrets encrypted with our CMK, if one was provided.
+              - !If
+                - HasCustomKmsKeyCond
+                - Effect: Allow
+                  Action:
+                    - kms:Decrypt
+                    - kms:GenerateDataKey
+                  Resource: !Ref KmsKeyArn
+                - !Ref AWS::NoValue
 
   # ---------- Logging ----------
 
@@ -248,7 +322,7 @@ Resources:
     Type: AWS::Logs::LogGroup
     Properties:
       LogGroupName: !Sub '/ecs/${EnvironmentName}'
-      RetentionInDays: 14
+      RetentionInDays: !Ref LogRetentionDays
 
   # ---------- Task definition ----------
 
@@ -328,6 +402,9 @@ Resources:
       DeploymentConfiguration:
         MinimumHealthyPercent: 100
         MaximumPercent: 200
+        DeploymentCircuitBreaker:
+          Enable: true
+          Rollback: true
       NetworkConfiguration:
         AwsvpcConfiguration:
           AssignPublicIp: DISABLED
