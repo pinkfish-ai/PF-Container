@@ -1,11 +1,20 @@
-# PinkConnect — Self-Host Setup Guide
+# PinkConnect — Self-Host
 
 Deploy PinkConnect to your own AWS account using only what's in this
-bundle. Top-to-bottom takes ~30 minutes once prerequisites are in place;
-most of that is waiting for DocumentDB and the ALB to provision.
+repository plus two artifacts Pinkfish hands you out of band.
 
-The bundle ships three CloudFormation templates that compose into a
-clean, decoupled stack:
+**This README is written for Claude to follow.** Drop it into a Claude
+Code session (or Claude.ai with a connector to your terminal) and ask
+Claude to "install PinkConnect into my AWS account following the
+README." The human approves AWS prompts and pastes credentials when
+asked; Claude runs the commands, watches outputs, and recovers from
+errors. A human can also follow it manually — the sequencing works
+either way, it's just denser than a typical install doc because it
+assumes an LLM is reading.
+
+Top-to-bottom takes ~30 minutes once prerequisites are in place; most
+of that is waiting for DocumentDB (~8 min) and the ALB (~5 min) to
+provision.
 
 ```
 networking  ─►  docdb  ─►  ecs
@@ -14,16 +23,98 @@ networking  ─►  docdb  ─►  ecs
    NAT, IGW                   Route53 alias
 ```
 
-Networking and the database are split out from the service so you can
-redeploy or replace the service without touching data, and you can swap
+The three stacks compose into one deployment but stay decoupled: you
+can redeploy the service without touching data, and you can swap
 DocumentDB for Atlas or self-managed MongoDB without touching the
 networking stack.
 
 ---
 
+## For Claude (orchestrator)
+
+If you're Claude reading this to run the install, here's how to wear
+the orchestrator hat:
+
+**Up front, ask the human:**
+1. AWS profile name and account ID (run `aws sts get-caller-identity
+   --profile <name>` to verify before doing anything destructive)
+2. Region (default `us-east-1`; ARM64 Fargate is supported in all
+   common regions but confirm)
+3. Domain (must be in Route53 in this account) and the subdomain
+   PinkConnect should live on (e.g. `connect.example.com`)
+4. Whether both binary artifacts are on disk:
+   - `pinkconnect-<version>.tar.gz` (the image, ~125 MB)
+   - `pinkfish-connections-admin-app-main.zip` (the admin app)
+
+   If either is missing, stop and tell the human to email
+   **pf-support@pinkfish.ai** to get them. The install can't proceed
+   without both.
+
+**Execution order is sequential by phase but parallel within phases:**
+
+| Phase | What | Approx wait | Parallelizable? |
+|---|---|---|---|
+| 1 | Verify prereqs (profile, Docker, binaries) | <1 min | — |
+| 2 | Create ECR, load + push image | 2 min | yes — run alongside §3 |
+| 3 | Deploy networking stack | 3 min | yes |
+| 4 | Deploy DocumentDB stack | 8 min | starts after §3, runs alongside §5–6 |
+| 5 | Generate JWT keypair, populate SSM | 1 min | runs alongside §4 |
+| 6 | Request ACM cert, insert DNS validation CNAME | 2 min | runs alongside §4 |
+| 7 | Deploy ECS stack + wire SG mid-deploy | 8 min | requires §3–6 done |
+| 8 | Verify `/health/ready` | <1 min | requires §7 |
+| 9 | Deploy a service + create a connection (smoke test) | 1 min | requires §8 |
+
+**Success criteria per phase** (Claude verifies, doesn't ask the human):
+
+| Phase | Success signal |
+|---|---|
+| 1 | `aws sts get-caller-identity` returns the expected account; `docker info` doesn't error; both binaries `ls`-visible |
+| 2 | `aws ecr describe-images --repository-name pinkconnect` lists the pushed tag |
+| 3 | Stack status `CREATE_COMPLETE`; 5 outputs (VpcId + 4 subnet IDs) |
+| 4 | Stack status `CREATE_COMPLETE`; `DocDbEndpoint`, `DocDbSecurityGroupId` outputs |
+| 5 | 5 SSM parameters under `/pinkconnect/*` exist |
+| 6 | `aws acm describe-certificate` returns `Status: ISSUED` |
+| 7 | Stack status `CREATE_COMPLETE`; `TaskSecurityGroupId` output |
+| 8 | `curl https://<host>/health/ready` returns `200 {"status":"ready"}` |
+| 9 | Proxy call through PinkConnect returns real upstream data |
+
+**Non-obvious things that will trip you if you don't know them up front
+(see [Gotchas](#gotchas) for detail):**
+
+- The image is **arm64-only**. The task definition pins `ARM64`; don't
+  override.
+- The ECS service waits up to 15 min for tasks to become healthy. The
+  task can't reach DocumentDB until you authorize the task SG on the
+  DocDB SG — **do this while the ECS deploy is still running**, not
+  after, or the stack rolls back. Use a background poll for the
+  `TaskSecurityGroup` resource and authorize as soon as it exists.
+- For API-key services, the per-connection key goes in `custom_fields`,
+  not `credentials`, when calling `POST /manage/user-connections/...`.
+- `GET /admin/*` requires a JWT with `is_admin: true` claim. The admin
+  app's UI controls this via a checkbox; if you bypass the UI, set
+  header `x-is-admin: true` or sign the JWT with that claim directly.
+- ECR repo is created with `ImageTagMutability: IMMUTABLE`. New
+  versions need a fresh tag.
+- The admin app's catalog and connections panels are **snapshots**, not
+  live. After every deploy/create/revoke, the human (or you) needs to
+  click "Load catalog" / "Load connections" again. Or query the
+  backend directly and report state to the human.
+- DocDB master password cannot contain `@`, `/`, `"`. The README's
+  example generator strips them. If you let the human pick, validate.
+
+**When you hit something I didn't:** read the relevant CFN template
+(they're short, ~100–400 lines each), read the container's
+`/ecs/pinkconnect` CloudWatch log group, and use what you find. The
+container's startup config validator prints a structured
+`mcp.server.config.invalid` log line listing every missing env var,
+which is the single most useful signal when `/health/ready` is stuck
+at 503.
+
+---
+
 ## 0. What's in the bundle
 
-This git repository contains the infrastructure code and documentation:
+This git repo:
 
 | File | Purpose |
 |------|---------|
@@ -32,42 +123,43 @@ This git repository contains the infrastructure code and documentation:
 | `cloudformation/pinkconnect-docdb.yaml` | Amazon DocumentDB cluster (MongoDB-wire compatible). |
 | `cloudformation/pinkconnect-ecs.yaml` | ALB, Fargate cluster, task def, service, autoscaling, Route53 alias. |
 
-Two binary artifacts are distributed **out of band** (too large for git;
-hand-delivered or pulled from a signed link). Place both in the root of
-this directory before starting:
+Two binary artifacts delivered out of band by Pinkfish. Drop both into
+the root of this directory before starting:
 
-| File | Source | Purpose |
-|------|--------|---------|
-| `pinkconnect-<version>.tar.gz` | Out-of-band from Pinkfish (1Password / signed link) | OCI image archive for the PinkConnect container (arm64). |
-| `pinkfish-connections-admin-app-main.zip` | Out-of-band from Pinkfish | Small Node.js app that mints JWTs, registers OAuth providers via the admin API, and drives end-user connection flows. |
+| File | Purpose |
+|------|---------|
+| `pinkconnect-<version>.tar.gz` | OCI image archive for the PinkConnect container (arm64, ~125 MB). |
+| `pinkfish-connections-admin-app-main.zip` | Small Node.js app that mints RS256 JWTs, registers OAuth providers via the admin API, and drives end-user connection flows. |
 
-If you don't have them yet, ask Pinkfish before continuing.
+If you don't have them, **email pf-support@pinkfish.ai** and ask for
+the two artifacts above. Don't continue until both are sitting in this
+directory — Claude can't conjure them and the install can't proceed
+without them.
 
 ---
 
 ## 1. Prerequisites
 
-You need:
+Required:
 
-- An **AWS account** with an IAM user that has `AdministratorAccess` (or
-  the equivalent scoped policy across CloudFormation, EC2, ECS, ECR,
-  ELBv2, IAM, ApplicationAutoScaling, Logs, Route53, ACM, SSM, Secrets
-  Manager, and DocumentDB).
-- A **domain in Route53** in the same account, e.g. `example.com`.
-  PinkConnect will live on a subdomain like `connect.example.com`. If
-  the domain is registered elsewhere, point its nameservers at a
-  Route53 hosted zone in this account first.
-- **AWS CLI v2** installed locally and configured with a profile that
-  authenticates to the target account (`aws sts get-caller-identity
-  --profile <name>` should return your account ID).
-- **Docker Desktop** (or any Docker engine). Used once, to `docker load`
-  the image and `docker push` it to your private ECR repo. The host
-  architecture doesn't have to match the image — `load` and `push`
-  copy bytes; runtime is on Fargate.
+- AWS account + IAM user/role with `AdministratorAccess` (or the
+  equivalent scoped policy across CloudFormation, EC2, ECS, ECR, ELBv2,
+  IAM, ApplicationAutoScaling, Logs, Route53, ACM, SSM, Secrets
+  Manager, DocumentDB).
+- A domain in Route53 in this account (e.g. `example.com`). If the
+  domain is registered elsewhere, point its nameservers at a Route53
+  hosted zone in this account first.
+- AWS CLI v2, configured profile. Verify with:
 
-Substitute your values into the placeholders below as you go. To keep
-the examples concrete, this guide uses `connect.example.com` and AWS
-profile `selfhost`.
+  ```bash
+  aws sts get-caller-identity --profile <name>
+  ```
+
+- Docker (Desktop or engine). Used once, to `docker load` the tarball
+  and `docker push` to your private ECR. Host architecture is
+  irrelevant for load/push — runtime is Fargate.
+
+Fix once at the top of the session; reused everywhere:
 
 ```bash
 export AWS_PROFILE=selfhost
@@ -81,33 +173,27 @@ export HOST=connect.example.com
 ## 2. Push the container image to your private ECR
 
 ```bash
-# Create the repo
 aws ecr create-repository \
   --repository-name pinkconnect \
   --image-tag-mutability IMMUTABLE \
   --region "$AWS_REGION" --profile "$AWS_PROFILE"
 
-# Note your account ID and the tag from the tarball filename
-ACCOUNT_ID=$(aws sts get-caller-identity --profile "$AWS_PROFILE" \
-  --query Account --output text)
-IMAGE_TAG=3a0863ee1167   # whatever ships in the bundle
+ACCOUNT_ID=$(aws sts get-caller-identity --profile "$AWS_PROFILE" --query Account --output text)
+IMAGE_TAG=3a0863ee1167   # match the tag in the tarball filename
 ECR_URI=${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/pinkconnect:${IMAGE_TAG}
 
-# Load, retag, push
 docker load -i pinkconnect-${IMAGE_TAG}.tar.gz
-# The tarball is tagged for an internal registry — retag for yours
+# The tarball ships with an internal-registry tag; retag for your ECR.
 SOURCE_TAG=$(docker images --format '{{.Repository}}:{{.Tag}}' | grep "pinkconnect:${IMAGE_TAG}" | head -1)
 docker tag "$SOURCE_TAG" "$ECR_URI"
 
 aws ecr get-login-password --region "$AWS_REGION" --profile "$AWS_PROFILE" \
-  | docker login --username AWS --password-stdin \
-      ${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+  | docker login --username AWS --password-stdin ${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
 
 docker push "$ECR_URI"
 ```
 
-The image is arm64-only. The task definition pins ARM64; no action
-needed on your side.
+Verify with `aws ecr describe-images --repository-name pinkconnect`.
 
 ---
 
@@ -120,24 +206,7 @@ aws cloudformation deploy \
   --region "$AWS_REGION" --profile "$AWS_PROFILE"
 ```
 
-Takes ~3 minutes. Capture the outputs:
-
-```bash
-aws cloudformation describe-stacks --stack-name pinkconnect-networking \
-  --region "$AWS_REGION" --profile "$AWS_PROFILE" \
-  --query 'Stacks[0].Outputs' --output table
-```
-
-You'll use these in the next two stacks:
-
-| Output | Used by |
-|--------|---------|
-| `VpcId` | docdb, ecs |
-| `PublicSubnetAId`, `PublicSubnetBId` | ecs (ALB lives in public subnets) |
-| `PrivateSubnetAId`, `PrivateSubnetBId` | docdb, ecs (tasks + DB in private subnets) |
-
-Convenience: pull them into env vars so the rest of the guide pastes
-cleanly.
+~3 minutes. Capture the outputs into env vars:
 
 ```bash
 nw() { aws cloudformation describe-stacks --stack-name pinkconnect-networking \
@@ -156,9 +225,9 @@ export PRIV_B=$(nw PrivateSubnetBId)
 ## 4. Deploy DocumentDB
 
 ```bash
-# Generate a strong master password. Avoid '@', '/', '"' — they break Mongo URIs.
+# Master password: avoid '@', '/', '"' — they break Mongo URIs.
 DOCDB_PASS=$(openssl rand -base64 24 | tr -d '@/"+=' | head -c 24)pX1
-echo "$DOCDB_PASS"   # save this somewhere — you need it again
+echo "$DOCDB_PASS"   # SAVE THIS — needed for the URI in §5
 
 aws cloudformation deploy \
   --stack-name pinkconnect-docdb \
@@ -171,10 +240,7 @@ aws cloudformation deploy \
     MasterUserPassword="$DOCDB_PASS"
 ```
 
-Takes 5–10 minutes. The cluster has `DeletionPolicy: Snapshot` so it
-won't silently disappear if the stack is deleted.
-
-Capture:
+~8 minutes. The cluster has `DeletionPolicy: Snapshot`. Capture:
 
 ```bash
 db() { aws cloudformation describe-stacks --stack-name pinkconnect-docdb \
@@ -187,29 +253,24 @@ export DOCDB_SG=$(db DocDbSecurityGroupId)
 
 ---
 
-## 5. Generate the JWT keypair and populate SSM
+## 5. Generate JWT keypair and populate SSM
 
-PinkConnect verifies user JWTs using a public key it reads from SSM at
-startup. The bundled admin app generates the matching keypair.
+PinkConnect verifies user JWTs against a public key it reads from SSM
+at boot. The bundled admin app generates the matching keypair:
 
 ```bash
 unzip -o pinkfish-connections-admin-app-main.zip -d .
 cd pinkfish-connections-admin-app-main
 npm install
-npm run keygen
-# writes keys/private.pem (admin app uses to sign) and keys/public.pem
-# (PinkConnect uses to verify)
+npm run keygen           # writes keys/private.pem + keys/public.pem
 cd ..
 ```
 
-Now put all the secrets into SSM. The ECS task definition references
-each parameter by name; container won't become healthy until they're
-all present.
+Build the Mongo URI (URL-encode the password so special chars don't
+break parsing) and put all five secrets into SSM:
 
 ```bash
-# URL-encode the DocDB password for the Mongo URI
-ENC_PASS=$(python3 -c "import urllib.parse,sys; \
-  print(urllib.parse.quote(sys.argv[1], safe=''))" "$DOCDB_PASS")
+ENC_PASS=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=''))" "$DOCDB_PASS")
 
 MONGO_URI="mongodb://pinkconnect:${ENC_PASS}@${DOCDB_ENDPOINT}:27017/?tls=true&tlsCAFile=/app/global-bundle.pem&replicaSet=rs0&readPreference=secondaryPreferred&retryWrites=false&authMechanism=SCRAM-SHA-1&authSource=admin"
 
@@ -224,23 +285,14 @@ put /pinkconnect/admin-token          "$(openssl rand -hex 32)"
 put /pinkconnect/jwt-public-key       "$(cat pinkfish-connections-admin-app-main/keys/public.pem)"
 ```
 
-The two encryption keys protect every per-connection OAuth credential
-written to Secrets Manager. **If you lose them, those credentials are
-unrecoverable** — back them up the same way you'd back up a database
-master password.
-
-The admin token authenticates the operator-only `/admin/services/*`
-endpoints. Save it somewhere you can read later:
-
-```bash
-aws ssm get-parameter --name /pinkconnect/admin-token --with-decryption \
-  --region "$AWS_REGION" --profile "$AWS_PROFILE" \
-  --query Parameter.Value --output text
-```
+**Treat `oauth-encryption-key` and `token-encryption-key` like a
+database master password.** They protect every per-connection
+credential at rest in Secrets Manager. Losing them makes every stored
+credential unrecoverable.
 
 ---
 
-## 6. Request an ACM certificate
+## 6. Request the ACM certificate
 
 ```bash
 CERT_ARN=$(aws acm request-certificate \
@@ -248,19 +300,18 @@ CERT_ARN=$(aws acm request-certificate \
   --validation-method DNS \
   --region "$AWS_REGION" --profile "$AWS_PROFILE" \
   --query CertificateArn --output text)
-echo "$CERT_ARN"
+```
 
-# Read the validation CNAME ACM wants
+Get the validation CNAME and insert it as a Route53 record:
+
+```bash
 aws acm describe-certificate --certificate-arn "$CERT_ARN" \
   --region "$AWS_REGION" --profile "$AWS_PROFILE" \
   --query 'Certificate.DomainValidationOptions[0].ResourceRecord'
+# Insert the returned Name/Value as a CNAME in your hosted zone.
 ```
 
-Insert the `Name`/`Value` pair as a CNAME in your Route53 hosted zone
-(via the console, or via `aws route53 change-resource-record-sets`).
-Validation typically completes within a few minutes on a Route53 zone.
-
-Wait for `Status: ISSUED`:
+Wait for `Status: ISSUED` (1–5 min on a Route53 zone):
 
 ```bash
 aws acm describe-certificate --certificate-arn "$CERT_ARN" \
@@ -270,27 +321,26 @@ aws acm describe-certificate --certificate-arn "$CERT_ARN" \
 
 ---
 
-## 7. Deploy the ECS service stack — and wire the SG mid-deploy
+## 7. Deploy ECS — and wire the task SG mid-deploy
 
-**Important:** the ecs stack and the docdb stack intentionally don't
-know about each other's security groups, so the ECS task can't reach
-DocumentDB until you authorize the task SG as ingress on the DocumentDB
-SG. CloudFormation creates the ECS `Service` resource last and waits up
-to ~15 minutes for the first task to become healthy — meaning if you
-wait for the stack to finish before wiring the SG, the first task
-fails its health check, CloudFormation eventually times out, and the
-stack rolls back. The fix is to wire the SG *while* the stack is still
-creating.
+**Read this section before running the command.** The ecs stack and
+the docdb stack don't know about each other's security groups. The
+ECS task can't reach DocumentDB until the task SG is authorized as
+ingress on the docdb SG. CloudFormation creates the `Service` resource
+last and waits ~15 min for the first task to be healthy; if the SG
+isn't wired in that window, the task fails its health check and the
+stack rolls back.
 
-Two shells, or kick the deploy into the background.
-
-### 7a. Start the deploy
+The solution: run the deploy in the background, poll for the task SG
+to be created (it appears in the first ~30s of the deploy), authorize
+it immediately, then wait for the stack to complete.
 
 ```bash
-HOSTED_ZONE_ID=$(aws route53 list-hosted-zones \
-  --query "HostedZones[?Name=='${DOMAIN}.'].Id" --output text --profile "$AWS_PROFILE" \
+HOSTED_ZONE_ID=$(aws route53 list-hosted-zones --profile "$AWS_PROFILE" \
+  --query "HostedZones[?Name=='${DOMAIN}.'].Id" --output text \
   | awk -F/ '{print $NF}')
 
+# Kick off the deploy in the background
 aws cloudformation deploy \
   --stack-name pinkconnect-ecs \
   --template-file cloudformation/pinkconnect-ecs.yaml \
@@ -305,53 +355,26 @@ aws cloudformation deploy \
     CallbackUrl="https://${HOST}/connect/callback" \
     Route53HostedZoneId="$HOSTED_ZONE_ID" \
     CertificateArn="$CERT_ARN" &
-```
 
-### 7b. As soon as the task SG exists, authorize it on the DocDB SG
-
-The `TaskSecurityGroup` resource is created within the first 30–60
-seconds — well before the `Service` resource starts waiting for
-healthy tasks. Poll for it in the second shell:
-
-```bash
+# As soon as the TaskSecurityGroup resource exists, authorize it
 until TASK_SG=$(aws cloudformation describe-stack-resources \
        --stack-name pinkconnect-ecs --region "$AWS_REGION" --profile "$AWS_PROFILE" \
        --query 'StackResources[?LogicalResourceId==`TaskSecurityGroup`].PhysicalResourceId' \
        --output text 2>/dev/null) && [ -n "$TASK_SG" ]; do sleep 5; done
-echo "TaskSG: $TASK_SG"
 
 aws ec2 authorize-security-group-ingress \
-  --group-id "$DOCDB_SG" \
-  --source-group "$TASK_SG" \
+  --group-id "$DOCDB_SG" --source-group "$TASK_SG" \
   --protocol tcp --port 27017 \
   --region "$AWS_REGION" --profile "$AWS_PROFILE"
+
+# Wait for the deploy to finish (it should now complete cleanly)
+wait
 ```
 
-The first task may already have started failing health checks by the
-time you wire the SG. That's fine — the service will spawn a fresh
-task that reaches DocumentDB successfully, and the stack reaches
-`CREATE_COMPLETE` once it stabilizes.
-
-### 7c. If you've already deployed and the stack rolled back
-
-If you missed the window and the stack rolled back, delete it,
-authorize the SG ahead of time using the *previous* TaskSecurityGroup
-ID (it's stable across redeploys of the same stack name as long as the
-SG name is unchanged), and redeploy. Or simpler: just re-run §7a, and
-authorize as soon as the new TaskSG appears.
-
-### 7d. Recovering an existing service that lost connectivity
-
-If the SG was correct but the service has been running with stale
-state (e.g. you rotated the DocDB password), force a fresh deploy:
-
-```bash
-aws ecs update-service \
-  --cluster pinkconnect-cluster \
-  --service pinkconnect-svc \
-  --force-new-deployment \
-  --region "$AWS_REGION" --profile "$AWS_PROFILE"
-```
+If the deploy beats you to the `Service` resource (first task already
+failing health checks): keep going — the service auto-replaces the
+failing task once the SG is authorized, and the stack reaches
+`CREATE_COMPLETE` on the retry.
 
 ---
 
@@ -367,103 +390,122 @@ curl -i "https://${HOST}/health/ready"
 
 `/health/live` flips green as soon as the process is up.
 `/health/ready` only goes green once every required env var resolved,
-so a 503 here means a missing or unreadable SSM parameter — check the
-CloudWatch log group `/ecs/pinkconnect` for the structured
-`mcp.server.config.invalid` line.
+so a 503 here = missing or unreadable SSM parameter. Check CloudWatch
+log group `/ecs/pinkconnect` for the structured
+`mcp.server.config.invalid` line — it lists exactly what's missing.
 
 ---
 
-## 9. Register your first OAuth provider
+## 9. Smoke test with a real connection (OpenWeather worked example)
 
-Per-provider OAuth credentials live in AWS Secrets Manager under the
-`SecretStorePrefix` namespace. Register them via the admin API rather
-than hand-creating Secrets Manager entries — the API writes the catalog
-row and the secret in one transaction.
+This proves the full pipeline: JWT verification → admin deploy →
+user-connection → encryption → Secrets Manager → runtime proxy →
+upstream API. Use your own OpenWeather API key (free tier from
+[openweathermap.org/api](https://openweathermap.org/api), or any
+API-key service that has a definition baked into the image — list
+them with `GET /admin/services`).
 
 ```bash
 ADMIN_TOKEN=$(aws ssm get-parameter --name /pinkconnect/admin-token \
   --with-decryption --region "$AWS_REGION" --profile "$AWS_PROFILE" \
   --query Parameter.Value --output text)
-
-# Example: Google OAuth
-curl -X POST "https://${HOST}/admin/services/google/deploy" \
-  -H "Authorization: Bearer $ADMIN_TOKEN" \
-  -H 'Content-Type: application/json' \
-  -d '{"credentials":{"client_id":"<google-client-id>","client_secret":"<google-client-secret>"}}'
 ```
 
-The redirect URI registered with Google (or any other provider) must
-match `https://${HOST}/connect/callback` exactly.
-
-Full admin surface (all require `Authorization: Bearer <admin-token>`):
-
-| Method + Path | Purpose |
-|---------------|---------|
-| `GET /admin/services` | List services in the catalog. |
-| `GET /admin/services/:key/definition` | Show the provider definition baked into the image. |
-| `POST /admin/services/:key/deploy` | Deploy a service (catalog row + provider OAuth creds in one call). |
-| `PUT /admin/services/:key/credentials` | Rotate provider OAuth creds. |
-| `DELETE /admin/services/:key/credentials` | Remove provider creds (disables the service). |
-| `POST /admin/services/sync` | Re-sync the catalog from the image's bundled definitions. |
-
----
-
-## 10. Use the admin app to drive a connection flow
-
-The bundled admin app mints user JWTs and walks a browser through the
-OAuth handshake. Configure its `.env`:
+Start the admin app (it'll mint JWTs for the next two calls):
 
 ```bash
 cd pinkfish-connections-admin-app-main
 cp .env.example .env
+# Edit .env: set API_BASE_URL=https://${HOST}, leave the rest as default
+npm start &
+cd ..
 ```
 
-Edit `.env`:
-
-```
-API_BASE_URL=https://connect.example.com
-PORT=3000
-JWT_PRIVATE_KEY_PATH=./keys/private.pem
-JWT_PROVIDER_ID=local-dev-user
-JWT_SELECTED_ORG=local-dev-org
-JWT_TYPE=user
-JWT_EXPIRES_IN=1h
-OAUTH_REDIRECT_URL=http://localhost:3000/oauth/done
-```
-
-Start it:
+Deploy the openweather core service (no OAuth creds needed for
+API-key services):
 
 ```bash
-npm start
-# admin app on http://localhost:3000
+curl -X POST "http://localhost:3000/api/admin/services/openweather/deploy" \
+  -H 'x-is-admin: true' \
+  -H 'content-type: application/json' \
+  -d '{}'
+# 200 {"id":"...","deployed":true,"status":"active"}
 ```
 
-Open `http://localhost:3000`, pick the provider you registered in §10,
-click through, and watch the connection appear in the list. Per-user
-refresh tokens land in Secrets Manager under the same namespace.
+Create a user connection. **Key detail:** for API-key services, the
+key goes in `custom_fields.api_key`, not `credentials.api_key`. (For
+OAuth services, `credentials.client_id` / `credentials.client_secret`
+is correct.)
+
+```bash
+curl -X POST "http://localhost:3000/api/connections/core/openweather" \
+  -H 'content-type: application/json' \
+  -d '{"name":"My OpenWeather","custom_fields":{"api_key":"<your-key>"}}'
+# 200 {"connection_id":"d9b...","identifier":"<first8>****"}
+```
+
+Verify the encrypted secret landed in Secrets Manager:
+
+```bash
+aws secretsmanager list-secrets --region "$AWS_REGION" --profile "$AWS_PROFILE" \
+  --query 'SecretList[?starts_with(Name, `pinkconnect/`)].Name' --output table
+# should include pinkconnect/creds-<connection_id>
+```
+
+And run a real upstream call through PinkConnect's proxy:
+
+```bash
+CONN_ID=<from previous response>
+curl "http://localhost:3000/api/proxy/openweather/${CONN_ID}/data/2.5/weather?lat=44.34&lon=10.99"
+# 200 with real OpenWeather JSON. Proves: JWT verify → DB lookup →
+# Secrets Manager read → decrypt → inject appid → upstream call → response.
+```
 
 ---
 
-## 11. Troubleshooting
+## Gotchas
+
+Things that aren't obvious from reading the templates or the admin
+app source. Elevated here so Claude doesn't have to learn them by
+breaking things first.
+
+| Gotcha | Detail |
+|---|---|
+| **Image is arm64-only** | The task definition pins `CpuArchitecture: ARM64`. Don't override unless Pinkfish gives you an amd64 build. |
+| **SG wire-up timing** | The §7 background-deploy + poll-for-task-SG dance is mandatory. Doing them sequentially rolls the stack back. |
+| **`custom_fields` vs `credentials`** | For API-key services, the per-connection key is a `custom_fields` value (because the service definition declares it under `custom_fields`). For OAuth services, `credentials.client_id` + `credentials.client_secret` at deploy time, no per-connection custom_fields. |
+| **`is_admin` claim** | `GET /admin/*` requires `is_admin: true` in the JWT. The admin app's UI ships a checkbox; if you're hitting `/api/admin/*` from elsewhere, set header `x-is-admin: true` or sign the JWT with the claim. |
+| **Catalog and connections are snapshots** | The admin app's panels don't auto-refresh. After every deploy/create/revoke, reload. Or hit the JSON endpoints directly. |
+| **`ImageTagMutability: IMMUTABLE`** | Pushing a new image requires a fresh tag. CFN `ContainerImage` parameter has to change to trigger a redeploy — there's no `:latest` shortcut. |
+| **DocDB password char set** | `@`, `/`, `"` break Mongo URIs. The README's generator strips them; if a human picks the password, validate. |
+| **`/health/ready` is 503 until ready** | The container deliberately returns 503 on `/health/ready` until every required env var resolves. ALB target health check uses this exact path, so a 503 here keeps the task out of service. Logs print `mcp.server.config.invalid` listing what's missing. |
+| **NAT gateway is the chunky cost** | The networking stack creates a single NAT (~$0.045/hr in us-east-1) regardless of whether the service is doing anything. Tear down when not in use. |
+| **Encryption keys are unrecoverable** | If you lose `/pinkconnect/oauth-encryption-key` or `/pinkconnect/token-encryption-key`, every stored per-connection credential is dead. Back them up like a DB master password. |
+| **JWT keypair regen requires force-redeploy** | If you regenerate the keypair and update `/pinkconnect/jwt-public-key`, the running task is still holding the old value in env. `aws ecs update-service --force-new-deployment` to pull the new value. Existing connections survive (they're keyed on JWT claims, not the signing key). |
+
+---
+
+## Troubleshooting
 
 | Symptom | Cause + fix |
-|---------|------------|
-| ECS service stuck "deployment in backoff" after first deploy. | First task launch retried too many times. `aws ecs update-service --cluster pinkconnect-cluster --service pinkconnect-svc --force-new-deployment`. |
-| `ResourceInitializationError: invalid ssm parameters: /pinkconnect/...`. | SSM parameter missing or the task exec role can't decrypt it. Re-run §5 for the missing one — ECS auto-recovers on the next attempt; no stack redeploy needed. |
-| Container restart loop, log shows "Missing required environment variables". | Same root cause as above. The startup config validator lists every missing variable on stdout. |
-| Container can't reach Mongo (`MongoServerSelectionError` / connect timeout). | Task SG isn't authorized on the DB SG. Re-check §8. |
-| `MongoNetworkError` with TLS handshake failure. | Mongo URI is missing `tlsCAFile=/app/global-bundle.pem`. The bundle is baked into the image; the connection string must reference that exact path. |
-| ALB target health check failing despite the container looking healthy. | Health check is `GET /health/ready`. The container returns 503 there until every required env var resolves. Check CloudWatch `/ecs/pinkconnect` for the `mcp.server.config.invalid` line. |
-| OAuth callback fails with `invalid_redirect`. | Provider's redirect URI doesn't match `https://${HOST}/connect/callback`. Update it in the provider's developer console. |
-| `core_services` collection empty after first deploy. | Catalog auto-seed runs at boot. It's idempotent — restart the task or call `POST /admin/services/sync`. |
+|---|---|
+| Stack stuck `CREATE_IN_PROGRESS` on `Service` for ~15 min, then rolls back | SG wire-up didn't happen in time. See §7. |
+| `ResourceInitializationError: invalid ssm parameters: /pinkconnect/...` | Missing SSM param or task exec role can't decrypt. Re-run the matching §5 line; ECS auto-recovers next attempt. |
+| Container restart loop, log shows `Missing required environment variables` | Same as above; the validator lists missing vars. |
+| `MongoServerSelectionError` / connect timeout from container logs | Task SG isn't authorized on DocDB SG. Re-run the `authorize-security-group-ingress` line from §7. |
+| `MongoNetworkError` with TLS handshake failure | Mongo URI missing `tlsCAFile=/app/global-bundle.pem`. The bundle is baked at that exact path; the URI option must match. |
+| ALB target health check failing but container looks fine in logs | Health check is `GET /health/ready`. Returns 503 until env vars resolve. Look for `mcp.server.config.invalid`. |
+| OAuth callback fails with `invalid_redirect` | OAuth app's redirect URI doesn't match `https://<host>/connect/callback`. Update in the provider's console. |
+| `core_services` collection empty after first deploy | Auto-seed runs idempotently at boot. Restart the task or `POST /admin/services/sync`. |
+| `cloudformation delete-stack` hangs on networking | NAT gateway / EIP releases can take ~5 min. If it's longer, check for orphaned ENIs in the VPC. |
 
 ---
 
-## 12. Teardown
+## Teardown
 
 ```bash
-# Reverse order. Deleting the ECS stack first releases the ALB and the
-# task SG; deleting docdb takes a snapshot per the DeletionPolicy.
+# Reverse order. Service first (releases ALB + task SG), then docdb
+# (takes a snapshot per DeletionPolicy), then networking.
 aws cloudformation delete-stack --stack-name pinkconnect-ecs \
   --region "$AWS_REGION" --profile "$AWS_PROFILE"
 aws cloudformation delete-stack --stack-name pinkconnect-docdb \
@@ -471,14 +513,20 @@ aws cloudformation delete-stack --stack-name pinkconnect-docdb \
 aws cloudformation delete-stack --stack-name pinkconnect-networking \
   --region "$AWS_REGION" --profile "$AWS_PROFILE"
 
-# SSM params and Secrets Manager entries don't belong to any stack —
+# SSM params and Secrets Manager entries don't belong to a stack —
 # delete by hand if you want them gone.
-aws ssm delete-parameters \
+aws ssm delete-parameters --region "$AWS_REGION" --profile "$AWS_PROFILE" \
   --names $(aws ssm describe-parameters \
               --parameter-filters "Key=Name,Option=BeginsWith,Values=/pinkconnect/" \
               --query 'Parameters[].Name' --output text \
-              --region "$AWS_REGION" --profile "$AWS_PROFILE") \
-  --region "$AWS_REGION" --profile "$AWS_PROFILE"
+              --region "$AWS_REGION" --profile "$AWS_PROFILE")
+
+# Per-connection secrets, if any
+aws secretsmanager list-secrets --region "$AWS_REGION" --profile "$AWS_PROFILE" \
+  --query 'SecretList[?starts_with(Name, `pinkconnect/`)].Name' --output text \
+  | xargs -n1 -I{} aws secretsmanager delete-secret \
+      --secret-id {} --force-delete-without-recovery \
+      --region "$AWS_REGION" --profile "$AWS_PROFILE"
 ```
 
 ---
@@ -486,25 +534,34 @@ aws ssm delete-parameters \
 ## Appendix A — Using something other than DocumentDB
 
 The `pinkconnect-docdb.yaml` stack is optional. Any MongoDB-wire
-compatible cluster works (Atlas, self-managed MongoDB, Ferret, etc.) —
-build the connection string your provider gives you, drop the
+compatible cluster works (Atlas, self-managed MongoDB, FerretDB). Build
+the connection string your provider gives you, drop the
 DocumentDB-specific options (`replicaSet=rs0`, `retryWrites=false`,
 `authMechanism=SCRAM-SHA-1`), keep `tls=true` if applicable, and store
-the result at `/pinkconnect/mongodb-uri`.
+the result at `/pinkconnect/mongodb-uri`. The cluster has to be
+reachable from the private subnets the ECS task lives in — peer VPCs
+or expose via a service endpoint if it lives outside this networking
+stack.
 
-If the cluster lives outside this VPC, also peer the VPCs or expose the
-cluster through a service endpoint so the Fargate task can reach it.
+## Appendix B — ECS stack parameter reference
 
-## Appendix B — Parameter reference
-
-`pinkconnect-ecs.yaml` parameters not covered inline:
+`cloudformation/pinkconnect-ecs.yaml` parameters not covered inline:
 
 | Parameter | Default | Notes |
 |-----------|---------|-------|
-| `EnvironmentName` | `pinkconnect` | Prefix for resource names. Useful if you run multiple instances per account. |
-| `SsmPrefix` | `/pinkconnect` | Where the task reads its static secrets from. |
-| `SecretStorePrefix` | `pinkconnect/` | Secrets Manager namespace for per-connection OAuth creds. The task role gets read/write/delete on `${SecretStorePrefix}*`. |
+| `EnvironmentName` | `pinkconnect` | Prefix for resource names. Set to something unique if you run multiple instances per account. |
+| `SsmPrefix` | `/pinkconnect` | SSM path where the task reads its static secrets. |
+| `SecretStorePrefix` | `pinkconnect/` | Secrets Manager namespace for per-connection OAuth creds. Task role gets read/write/delete on `${SecretStorePrefix}*`. |
 | `AuthMode` | `internal` | `internal` reads `${SsmPrefix}/jwt-public-key`. Set `external` and pass `AuthJwksUrl` / `AuthIssuer` / `AuthAudience` to verify against an external IdP instead. |
-| `UsageTrackingEnabled` | `false` | Set `true` only if you've stored Upstash Redis credentials at `${SsmPrefix}/upstash-ratelimit-redis-{url,token}`. |
+| `UsageTrackingEnabled` | `false` | `true` requires Upstash Redis creds at `${SsmPrefix}/upstash-ratelimit-redis-{url,token}`. |
 | `DesiredCount` / `MaxCount` | `1` / `5` | Target-tracking autoscaling on average CPU. |
 | `TaskCpu` / `TaskMemory` | `1024` / `2048` | Fargate task size. |
+
+---
+
+## License + support
+
+License: TBD — contact Pinkfish for terms before redistributing.
+
+Support: **pf-support@pinkfish.ai**. Same address for getting the two
+binary artifacts (image tarball + admin app zip) listed in §0.
