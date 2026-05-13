@@ -2,6 +2,16 @@
 
 PinkConnect deployed to your own AWS account.
 
+## Pick a profile
+
+| Profile | Cost | Use case | Install doc |
+|---|---|---|---|
+| **Smoke** | ~$145/mo | Validate the install works on your AWS. Single-AZ DocDB, single NAT, default IAM, no WAF/CDN/cross-region-backup. Throwaway or dev-only. ~30 min to deploy. | [`install-smoke.md`](./install-smoke.md) |
+| **Production** | ~$300–500/mo | Customer-facing service. Multi-AZ DocDB, redundant NAT, VPC endpoints, WAF, BYOK CMK, CloudFront in front of the ALB, AWS Backup with cross-region copy, 365-day log retention. ~45 min to deploy. Has prerequisites the human pre-creates (CMK, WAF Web ACL, wildcard cert, dest backup vault). | [`install-production.md`](./install-production.md) |
+
+Recommended path: smoke first to validate everything works on your
+AWS, then tear it down and install production fresh.
+
 ## Install
 
 The install is orchestrated by Claude. Drop this repo into a Claude
@@ -10,29 +20,40 @@ Code session and tell it:
 > *"Install PinkConnect into my AWS account following claude-setup.md."*
 
 Claude will ask four up-front questions (AWS profile, region, domain,
-binary files), then drive the AWS commands itself. Takes ~30 minutes
-end-to-end; ~$150/mo to keep running.
+**smoke or production**), then drive the AWS commands itself.
 
 **Before starting,** you need:
 
 - An AWS account with admin access, and an AWS CLI profile for it.
 - A domain in Route53 in that account (PinkConnect lives on a
-  subdomain — e.g. `connect.example.com`).
+  subdomain — e.g. `connect.example.com` for smoke or
+  `prod.example.com` for production).
 - Two binary artifacts from Pinkfish, dropped into the repo root:
   - `pinkconnect-<version>.tar.gz` — the container image
   - `pinkfish-connections-admin-app-main.zip` — the admin app
 
   Contact Pinkfish to get them if you don't have them already.
+- *(Production only)* a few extra prerequisites enumerated in
+  [`install-production.md`](./install-production.md): customer-managed
+  KMS CMK, WAFv2 Web ACL, wildcard ACM cert in us-east-1, AWS Backup
+  destination vault in a second region.
 
 If you'd rather drive the install yourself rather than through Claude,
-[`claude-setup.md`](./claude-setup.md) is a working human-readable doc
-too — it's just denser than a normal install guide.
+the install-*.md files are working human-readable docs too — they're
+just dense.
 
-Want to swap in your own database, run on Kubernetes instead of
-Fargate, or skip the ALB? See
-[`alternate-components.md`](./alternate-components.md) — the container's
-actual runtime contract is narrower than what `claude-setup.md`
-provisions.
+## Reference docs
+
+| File | Purpose |
+|---|---|
+| [`install-smoke.md`](./install-smoke.md) | Smoke install walkthrough (cheap, single-AZ) |
+| [`install-production.md`](./install-production.md) | Production install walkthrough (multi-AZ, hardened) |
+| [`claude-setup.md`](./claude-setup.md) | Orchestrator entry for Claude (decision tree, ask-the-human, phase ordering) |
+| [`gotchas.md`](./gotchas.md) | Non-obvious behaviors to know **before** deploying |
+| [`troubleshooting.md`](./troubleshooting.md) | Symptom → cause+fix when something breaks |
+| [`teardown.md`](./teardown.md) | Delete everything when done |
+| [`parameter-reference.md`](./parameter-reference.md) | What every CFN parameter does |
+| [`alternate-components.md`](./alternate-components.md) | Swap-out playbook (Atlas instead of DocDB, EKS instead of Fargate, Cloudflare instead of CloudFront, etc.) |
 
 ## Verify it's running
 
@@ -58,14 +79,15 @@ content-type: application/json; charset=utf-8
   Check the `/ecs/pinkconnect` CloudWatch log group for the
   `mcp.server.config.invalid` line, which lists exactly what's wrong.
 - **DNS doesn't resolve** — the ACM cert or Route53 A-alias didn't
-  land. Re-check phases 6 and 7 of `claude-setup.md`, or ask Claude
-  to diagnose.
+  land. Re-check the ACM cert + Route53 steps of your chosen install
+  doc, or ask Claude to diagnose. See also
+  [`troubleshooting.md`](./troubleshooting.md).
 
 ## Make a proxy call
 
-Assuming you've followed `claude-setup.md` § 9 to deploy the
-`openweather` service and create a connection with your API key, this
-is how you hit the real API through PinkConnect:
+Assuming you've followed the smoke-test step in your install doc to
+deploy the `openweather` service and create a connection with your
+API key, this is how you hit the real API through PinkConnect:
 
 ### 1. Mint a JWT
 
@@ -104,11 +126,12 @@ connections; a user in a different org sees nothing of acme-co's.
 
 In this smoke test those values are hardcoded as `local-dev-user` /
 `local-dev-org` (the defaults the admin app ships with in
-`.env.example`), so the connection you created during § 9 belongs to
-that pair. If you change them in the JWT you mint, PinkConnect treats
-you as a different user and `/manage/user-connections` returns an
-empty list — your connection is still there, just owned by the other
-identity. Match the values you used when creating the connection.
+`.env.example`), so the connection you created during the install's
+smoke-test step belongs to that pair. If you change them in the JWT
+you mint, PinkConnect treats you as a different user and
+`/manage/user-connections` returns an empty list — your connection
+is still there, just owned by the other identity. Match the values
+you used when creating the connection.
 
 ### 2. Find the connection ID
 
