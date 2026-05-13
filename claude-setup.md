@@ -542,19 +542,90 @@ reachable from the private subnets the ECS task lives in — peer VPCs
 or expose via a service endpoint if it lives outside this networking
 stack.
 
-## Appendix B — ECS stack parameter reference
+## Appendix B — Stack parameter reference
 
-`cloudformation/pinkconnect-ecs.yaml` parameters not covered inline:
+### `cloudformation/pinkconnect-networking.yaml`
 
 | Parameter | Default | Notes |
-|-----------|---------|-------|
+|---|---|---|
+| `EnvironmentName` | `pinkconnect` | Prefix for resource names. |
+| `VpcCidr` + 4 subnet CIDRs | `10.40.0.0/16` etc. | Override if the CIDR clashes with existing VPCs / peers. |
+| `NatGatewayCount` | `1` | Set to `2` for production — one NAT per AZ removes the cross-AZ failure mode. +$33/mo per additional NAT. |
+| `EnableVpcEndpoints` | `false` | Set `true` for production — interface endpoints for ECR/Secrets Manager/SSM/Logs/KMS + S3 gateway endpoint. Removes NAT bandwidth for AWS service traffic, speeds up Fargate cold starts. ~$42/mo. |
+
+### `cloudformation/pinkconnect-docdb.yaml`
+
+| Parameter | Default | Notes |
+|---|---|---|
+| `InstanceClass` | `db.t4g.medium` | Burstable; smoke deploys only. Production: `db.r6g.large` or larger. |
+| `InstanceCount` | `1` | Set to `2` (HA) or `3` (HA + read replica) for production. Single-AZ default = no HA. |
+| `BackupRetentionDays` | `7` | Bump to `35` (max) for compliance frameworks. |
+| `PreferredBackupWindow` / `PreferredMaintenanceWindow` | `07:00-08:00` / `sun:09:00-sun:10:00` | UTC. Pick low-traffic slots. |
+| `KmsKeyArn` | `''` | BYOK CMK for cluster storage encryption. Empty = AWS-managed key. |
+
+### `cloudformation/pinkconnect-ecs.yaml`
+
+| Parameter | Default | Notes |
+|---|---|---|
 | `EnvironmentName` | `pinkconnect` | Prefix for resource names. Set to something unique if you run multiple instances per account. |
 | `SsmPrefix` | `/pinkconnect` | SSM path where the task reads its static secrets. |
-| `SecretStorePrefix` | `pinkconnect/` | Secrets Manager namespace for per-connection OAuth creds. Task role gets read/write/delete on `${SecretStorePrefix}*`. |
+| `SecretStorePrefix` | `pinkconnect/` | Secrets Manager namespace for per-connection OAuth creds. Task role is scoped to `${SecretStorePrefix}*`. |
 | `AuthMode` | `internal` | `internal` reads `${SsmPrefix}/jwt-public-key`. Set `external` and pass `AuthJwksUrl` / `AuthIssuer` / `AuthAudience` to verify against an external IdP instead. |
 | `UsageTrackingEnabled` | `false` | `true` requires Upstash Redis creds at `${SsmPrefix}/upstash-ratelimit-redis-{url,token}`. |
-| `DesiredCount` / `MaxCount` | `1` / `5` | Target-tracking autoscaling on average CPU. |
+| `DesiredCount` / `MaxCount` | `1` / `5` | Target-tracking autoscaling on average CPU. Set `DesiredCount` to `2+` for production (one task per AZ minimum). |
 | `TaskCpu` / `TaskMemory` | `1024` / `2048` | Fargate task size. |
+| `InternalAlb` | `false` | Set `true` for VPN/PrivateLink-only deployments — ALB scheme becomes `internal` and it moves to the private subnets. |
+| `KmsKeyArn` | `''` | BYOK CMK ARN for SSM SecureString + Secrets Manager. Empty = AWS-managed keys. When set, task/exec roles scope `kms:Decrypt` to this key only. |
+| `LogRetentionDays` | `90` | CloudWatch Logs retention. 90 covers SOC2 / ISO27001; bump to `365+` for HIPAA / SOX / FedRAMP. |
+| `WebAclArn` | `''` | Optional WAFv2 Web ACL ARN to associate with the ALB. Recommended for production: at least rate-based + `AWSManagedRulesCommonRuleSet`. |
+
+---
+
+## Appendix C — Production hardening profile
+
+A summary of the parameter changes to flip the smoke-deploy default
+into a "ready for real traffic" topology. Roughly $145 → $300/mo on
+top of whatever you pay for image pulls and traffic.
+
+```bash
+# networking — multi-NAT + VPC endpoints
+aws cloudformation deploy --stack-name pinkconnect-networking \
+  --template-file cloudformation/pinkconnect-networking.yaml \
+  --region "$AWS_REGION" --profile "$AWS_PROFILE" \
+  --parameter-overrides \
+    NatGatewayCount=2 \
+    EnableVpcEndpoints=true
+
+# docdb — multi-AZ + bigger instance + 35-day retention
+aws cloudformation deploy --stack-name pinkconnect-docdb \
+  --template-file cloudformation/pinkconnect-docdb.yaml \
+  --region "$AWS_REGION" --profile "$AWS_PROFILE" \
+  --parameter-overrides \
+    InstanceClass=db.r6g.large \
+    InstanceCount=2 \
+    BackupRetentionDays=35 \
+    VpcId=$VPC_ID PrivateSubnetAId=$PRIV_A PrivateSubnetBId=$PRIV_B \
+    MasterUserPassword="$DOCDB_PASS"
+
+# ecs — 2 tasks + WAF + 365-day logs + (optional) internal ALB / CMK
+aws cloudformation deploy --stack-name pinkconnect-ecs \
+  --template-file cloudformation/pinkconnect-ecs.yaml \
+  --region "$AWS_REGION" --profile "$AWS_PROFILE" \
+  --capabilities CAPABILITY_NAMED_IAM \
+  --parameter-overrides \
+    DesiredCount=2 \
+    LogRetentionDays=365 \
+    WebAclArn=$WEB_ACL_ARN \
+    InternalAlb=false \
+    KmsKeyArn=$CMK_ARN \
+    # ... plus the usual VpcId, subnets, ContainerImage, CallbackUrl, etc.
+```
+
+The hardening flags address ~half the findings in the Accenture-style
+review. The other half — global encryption keys, audit logging,
+per-operator admin tokens, JWT key rotation, container signing/SBOM —
+live in the container itself and need a Pinkfish image release. See
+the project's tracking issues for status.
 
 ---
 
