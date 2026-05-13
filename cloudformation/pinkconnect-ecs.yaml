@@ -48,6 +48,22 @@ Parameters:
     Type: String
     Default: pinkconnect/
 
+  SecretStoreProvider:
+    Type: String
+    AllowedValues: [ aws, mongo ]
+    Default: aws
+    Description: >
+      Where per-connection OAuth credentials are stored. `aws` (default)
+      uses AWS Secrets Manager — KMS-encrypted, IAM-scoped, but capped
+      at AWS's regional secret quota (500K per region by default; ask
+      AWS to raise it for larger deployments). `mongo` stores them in
+      the same MongoDB cluster as the rest of the data — no extra
+      infra and no AWS limit, but credentials are encrypted only by the
+      container's OAUTH_ENCRYPTION_KEY / TOKEN_ENCRYPTION_KEY env vars
+      (no per-secret KMS, no IAM scoping). Recommended: `aws` for
+      production unless you've hit the secret quota; `mongo` is a
+      legitimate workaround at very high scale or for local-only dev.
+
   # ---- Feature flags ----
   UsageTrackingEnabled:
     Type: String
@@ -350,7 +366,7 @@ Resources:
             - { Name: NODE_ENV, Value: production }
             - { Name: PORT, Value: '8090' }
             - { Name: CALLBACK_URL, Value: !Ref CallbackUrl }
-            - { Name: SECRET_STORE_PROVIDER, Value: aws }
+            - { Name: SECRET_STORE_PROVIDER, Value: !Ref SecretStoreProvider }
             - { Name: SECRET_STORE_PREFIX, Value: !Ref SecretStorePrefix }
             - { Name: USAGE_TRACKING_ENABLED, Value: !Ref UsageTrackingEnabled }
             - { Name: AUTH_MODE, Value: !Ref AuthMode }
