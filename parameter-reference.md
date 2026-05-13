@@ -1,0 +1,98 @@
+# PinkConnect — CFN parameter reference
+
+Every parameter on every template. Defaults preserve smoke-deploy
+behavior unless noted; the production install changes the ones flagged
+"prod-only" below.
+
+---
+
+## `cloudformation/pinkconnect-networking.yaml`
+
+| Parameter | Default | Notes |
+|---|---|---|
+| `EnvironmentName` | `pinkconnect` | Prefix for resource names. Override to run multiple instances in one account. |
+| `VpcCidr` | `10.40.0.0/16` | VPC CIDR. Override if it clashes with peered VPCs. |
+| `PublicSubnetACidr` / `PublicSubnetBCidr` | `10.40.0.0/20` / `10.40.16.0/20` | Public subnet CIDRs (ALB, NAT). Must fit inside `VpcCidr`. |
+| `PrivateSubnetACidr` / `PrivateSubnetBCidr` | `10.40.32.0/20` / `10.40.48.0/20` | Private subnet CIDRs (task, DocDB). |
+| `NatGatewayCount` | `1` | **prod-only**: set `2` for one NAT per AZ. Removes the cross-AZ failure mode. +~$33/mo. |
+| `EnableVpcEndpoints` | `false` | **prod-only**: set `true` for interface endpoints (ECR api+dkr, Secrets Manager, SSM, Logs, KMS) + S3 gateway endpoint. Removes NAT bandwidth for AWS service traffic, speeds up Fargate cold starts. ~$42/mo. |
+
+---
+
+## `cloudformation/pinkconnect-docdb.yaml`
+
+| Parameter | Default | Notes |
+|---|---|---|
+| `EnvironmentName` | `pinkconnect` | Prefix. |
+| `VpcId` / `PrivateSubnetAId` / `PrivateSubnetBId` | required | From networking stack outputs. |
+| `MasterUsername` | `pinkconnect` | DocDB master user. |
+| `MasterUserPassword` | required, `NoEcho` | Master password. Avoid `@`, `/`, `"` — they break the Mongo URI. |
+| `InstanceClass` | `db.t4g.medium` | **prod-only**: bump to `db.r6g.large` or larger. t-class is burstable, unsuitable for sustained load. |
+| `InstanceCount` | `1` | **prod-only**: `2` (HA — primary + cross-AZ replica) or `3` (extra read replica). |
+| `BackupRetentionDays` | `7` | **prod-only**: bump to `35` (max) for compliance frameworks. |
+| `PreferredBackupWindow` | `07:00-08:00` | UTC backup window. Pick a low-traffic slot. |
+| `PreferredMaintenanceWindow` | `sun:09:00-sun:10:00` | UTC weekly maintenance window. |
+| `KmsKeyArn` | `''` | **prod-only**: BYOK CMK ARN for cluster storage encryption. Empty = AWS-managed `alias/aws/rds`. |
+
+Outputs: `DocDbClusterArn`, `DocDbEndpoint`, `DocDbReaderEndpoint`, `DocDbPort`, `DocDbSecurityGroupId`.
+
+---
+
+## `cloudformation/pinkconnect-ecs.yaml`
+
+| Parameter | Default | Notes |
+|---|---|---|
+| `EnvironmentName` | `pinkconnect` | Prefix. |
+| `VpcId`, `PublicSubnetAId`/`B`, `PrivateSubnetAId`/`B` | required | From networking outputs. |
+| `ContainerImage` | required | Full ECR image URI for the PinkConnect image. arm64-only. |
+| `CustomDomainName` | required | Customer-facing hostname (e.g. `connect.example.com`). |
+| `Route53HostedZoneId` | required | Route53 hosted zone containing `CustomDomainName`. |
+| `CertificateArn` | required | ACM cert for `CustomDomainName` in the ALB's region. |
+| `CallbackUrl` | required | `https://<host>/connect/callback`. |
+| `SsmPrefix` | `/pinkconnect` | SSM path where the task reads static secrets. |
+| `SecretStorePrefix` | `pinkconnect/` | Secrets Manager namespace; task role is scoped to `${SecretStorePrefix}*`. |
+| `SecretStoreProvider` | `aws` | `aws` = AWS Secrets Manager (KMS-encrypted, IAM-scoped, capped at 500K secrets/region). `mongo` = same MongoDB cluster (no extra infra, no AWS quota, but app-layer encryption only — no per-secret KMS). |
+| `AuthMode` | `internal` | `internal` reads `${SsmPrefix}/jwt-public-key`. `external` verifies against an external IdP (set `AuthJwksUrl` / `AuthIssuer` / `AuthAudience`). |
+| `AuthJwksUrl` / `AuthIssuer` / `AuthAudience` | `''` | Set when `AuthMode=external`. |
+| `UsageTrackingEnabled` | `false` | `true` requires Upstash Redis at `${SsmPrefix}/upstash-ratelimit-redis-{url,token}`. |
+| `DesiredCount` / `MaxCount` | `1` / `5` | Target-tracking autoscaling on average CPU. **prod**: `DesiredCount: 2+` (one task per AZ minimum). |
+| `TaskCpu` / `TaskMemory` | `1024` / `2048` | Fargate task size. |
+| `InternalAlb` | `false` | `true` makes the ALB internal-only (private subnets). Use for VPN/PrivateLink-only access. |
+| `KmsKeyArn` | `''` | **prod-only**: BYOK CMK for SSM SecureString + Secrets Manager. Empty = AWS-managed keys; task/exec roles scope `kms:Decrypt` accordingly. |
+| `LogRetentionDays` | `90` | **prod tuning**: 90 covers SOC2/ISO27001. Bump to `365+` for HIPAA/SOX/FedRAMP (allowed: 1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1827, 3653). |
+| `WebAclArn` | `''` | **prod-only**: WAFv2 Web ACL ARN to associate with the ALB. Recommended at minimum: rate-based + `AWSManagedRulesCommonRuleSet`. |
+| `CreateDnsRecord` | `true` | Default creates a Route53 A-alias for `CustomDomainName` → ALB. Set `false` when fronting with CloudFront (CDN stack owns that record). |
+| `OriginHostname` | `''` | When set (e.g. `origin-prod.example.com`), creates a second A-alias for the ALB. CloudFront uses this as the origin so HTTPS-to-origin validates. ALB cert must cover `OriginHostname` — wildcard cert easiest. |
+
+Outputs: `AlbDnsName`, `PublicUrl`, `ClusterName`, `ServiceName`, `TaskSecurityGroupId`.
+
+---
+
+## `cloudformation/pinkconnect-cdn.yaml` (optional)
+
+| Parameter | Default | Notes |
+|---|---|---|
+| `EnvironmentName` | `pinkconnect` | Prefix. |
+| `CustomDomainName` | required | Same hostname the ECS stack would have used (`connect.example.com`); CDN owns this record now. |
+| `OriginHostname` | required | Hostname the ALB is reachable at (set as `OriginHostname` on the ECS stack). Different from `CustomDomainName`. |
+| `CloudFrontCertificateArn` | required | ACM cert for `CustomDomainName`, **must be in us-east-1**. |
+| `Route53HostedZoneId` | required | Hosted zone containing `CustomDomainName`. |
+| `PriceClass` | `PriceClass_100` | NA + EU only, cheapest. `PriceClass_200` adds Asia/ME/Africa. `PriceClass_All` adds South America + Australia. |
+
+Outputs: `DistributionId`, `DistributionDomainName`, `PublicUrl`.
+
+---
+
+## `cloudformation/pinkconnect-backup.yaml` (optional)
+
+| Parameter | Default | Notes |
+|---|---|---|
+| `EnvironmentName` | `pinkconnect` | Prefix. |
+| `DocDbClusterArn` | required | From the docdb stack's `DocDbClusterArn` output. |
+| `RetentionDays` | `35` | Source-vault retention. Max allowed in a `BackupPlan` rule. |
+| `ScheduleExpression` | `cron(0 5 ? * * *)` | UTC, 6-field cron. Default = daily at 05:00 UTC. |
+| `StartWindowMinutes` | `60` | Max delay before job must start. |
+| `CompletionWindowMinutes` | `180` | Max time job has to complete. |
+| `DestinationBackupVaultArn` | `''` | Empty = single-region backups. Set to a vault ARN in a different region (customer pre-creates) to enable cross-region copy via the plan's `CopyAction`. |
+
+Outputs: `BackupVaultName`, `BackupVaultArn`, `BackupRoleArn`, `BackupPlanId`.
