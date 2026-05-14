@@ -337,12 +337,12 @@ Total monthly cost goes from ~$145 to ~$300–500. See
 
 ## Tear it down
 
-```bash
-# See teardown.md for the full sequence. Short version:
-aws cloudformation delete-stack --stack-name pinkconnect-ecs --region "$AWS_REGION" --profile "$AWS_PROFILE"
-aws cloudformation delete-stack --stack-name pinkconnect-docdb --region "$AWS_REGION" --profile "$AWS_PROFILE"
-aws cloudformation delete-stack --stack-name pinkconnect-networking --region "$AWS_REGION" --profile "$AWS_PROFILE"
-```
+Follow [`teardown.md`](./teardown.md) → **"Tear down a smoke install"**.
 
-Don't forget the SSM params, Secrets Manager entries, ACM cert, ECR
-repo — see `teardown.md`.
+There's an order-of-operations subtlety (the install-time SG ingress
+authorization isn't owned by CloudFormation, so it must be revoked
+before deleting the ECS stack or that delete will hang) plus
+post-stack cleanup for SSM params, Secrets Manager entries, ACM
+cert, and the ECR repo. teardown.md is the single source of truth so
+you don't get a half-cleaned environment from following a stale
+shortcut.
