@@ -26,10 +26,32 @@ Smoke uses default stack names (`pinkconnect-*`) and SSM prefix
 are production-only).
 
 ```bash
-# Required stacks, reverse order.
+# Revoke the manually-added docdb→task SG ingress rule before deleting
+# the ECS stack. The install authorized this rule outside CFN, so CFN
+# doesn't know to clean it up, and the ECS stack delete will hang
+# waiting on a TaskSecurityGroup dependency violation.
+TASK_SG=$(aws cloudformation describe-stack-resources \
+  --stack-name pinkconnect-ecs --region "$AWS_REGION" --profile "$AWS_PROFILE" \
+  --query 'StackResources[?LogicalResourceId==`TaskSecurityGroup`].PhysicalResourceId' \
+  --output text)
+DOCDB_SG=$(aws cloudformation describe-stacks --stack-name pinkconnect-docdb \
+  --region "$AWS_REGION" --profile "$AWS_PROFILE" \
+  --query "Stacks[0].Outputs[?OutputKey=='DocDbSecurityGroupId'].OutputValue" \
+  --output text)
+aws ec2 revoke-security-group-ingress \
+  --group-id "$DOCDB_SG" --source-group "$TASK_SG" \
+  --protocol tcp --port 27017 \
+  --region "$AWS_REGION" --profile "$AWS_PROFILE" 2>/dev/null || true
+
+# Required stacks, reverse order. Wait between dependent deletes so
+# the next stack's delete doesn't race a still-deleting parent.
 aws cloudformation delete-stack --stack-name pinkconnect-ecs \
   --region "$AWS_REGION" --profile "$AWS_PROFILE"
+aws cloudformation wait stack-delete-complete --stack-name pinkconnect-ecs \
+  --region "$AWS_REGION" --profile "$AWS_PROFILE"
 aws cloudformation delete-stack --stack-name pinkconnect-docdb \
+  --region "$AWS_REGION" --profile "$AWS_PROFILE"
+aws cloudformation wait stack-delete-complete --stack-name pinkconnect-docdb \
   --region "$AWS_REGION" --profile "$AWS_PROFILE"
 aws cloudformation delete-stack --stack-name pinkconnect-networking \
   --region "$AWS_REGION" --profile "$AWS_PROFILE"
@@ -71,10 +93,29 @@ aws cloudformation wait stack-delete-complete --stack-name pinkconnect-cdn-prod 
 aws cloudformation wait stack-delete-complete --stack-name pinkconnect-backup-prod \
   --region "$AWS_REGION" --profile "$AWS_PROFILE"
 
-# Required stacks, reverse order.
+# Revoke the manually-added docdb→task SG ingress rule before
+# deleting the ECS stack (same reason as smoke teardown above).
+TASK_SG=$(aws cloudformation describe-stack-resources \
+  --stack-name pinkconnect-ecs-prod --region "$AWS_REGION" --profile "$AWS_PROFILE" \
+  --query 'StackResources[?LogicalResourceId==`TaskSecurityGroup`].PhysicalResourceId' \
+  --output text)
+DOCDB_SG=$(aws cloudformation describe-stacks --stack-name pinkconnect-docdb-prod \
+  --region "$AWS_REGION" --profile "$AWS_PROFILE" \
+  --query "Stacks[0].Outputs[?OutputKey=='DocDbSecurityGroupId'].OutputValue" \
+  --output text)
+aws ec2 revoke-security-group-ingress \
+  --group-id "$DOCDB_SG" --source-group "$TASK_SG" \
+  --protocol tcp --port 27017 \
+  --region "$AWS_REGION" --profile "$AWS_PROFILE" 2>/dev/null || true
+
+# Required stacks, reverse order. Wait between dependent deletes.
 aws cloudformation delete-stack --stack-name pinkconnect-ecs-prod \
   --region "$AWS_REGION" --profile "$AWS_PROFILE"
+aws cloudformation wait stack-delete-complete --stack-name pinkconnect-ecs-prod \
+  --region "$AWS_REGION" --profile "$AWS_PROFILE"
 aws cloudformation delete-stack --stack-name pinkconnect-docdb-prod \
+  --region "$AWS_REGION" --profile "$AWS_PROFILE"
+aws cloudformation wait stack-delete-complete --stack-name pinkconnect-docdb-prod \
   --region "$AWS_REGION" --profile "$AWS_PROFILE"
 aws cloudformation delete-stack --stack-name pinkconnect-networking-prod \
   --region "$AWS_REGION" --profile "$AWS_PROFILE"
