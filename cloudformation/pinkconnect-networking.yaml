@@ -47,12 +47,10 @@ Parameters:
       'true' creates interface VPC endpoints for ECR (api + dkr),
       Secrets Manager, SSM, CloudWatch Logs, and KMS, plus a gateway
       endpoint for S3 (needed by ECR pulls). Speeds up Fargate cold
-      starts and removes NAT bandwidth + per-GB charges for those AWS
-      services. Each interface endpoint is created in BOTH private
-      subnets, so the bill is per-AZ: 6 interface endpoints × 2 AZs =
-      12 ENI-AZ attachments at ~$7/mo each ≈ ~$84/mo, plus per-GB
-      data processing. The gateway endpoint for S3 is free. Worth
-      enabling at any non-trivial scale.
+      starts and removes NAT bandwidth for those AWS services. Each
+      interface endpoint is created in both private subnets (one ENI
+      per AZ); the gateway endpoint for S3 is in-account routing only.
+      Worth enabling for production deploys.
 
 Conditions:
   TwoNatsCond: !Equals [ !Ref NatGatewayCount, 2 ]

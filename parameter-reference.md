@@ -14,8 +14,8 @@ behavior unless noted; the production install changes the ones flagged
 | `VpcCidr` | `10.40.0.0/16` | VPC CIDR. Override if it clashes with peered VPCs. |
 | `PublicSubnetACidr` / `PublicSubnetBCidr` | `10.40.0.0/20` / `10.40.16.0/20` | Public subnet CIDRs (ALB, NAT). Must fit inside `VpcCidr`. |
 | `PrivateSubnetACidr` / `PrivateSubnetBCidr` | `10.40.32.0/20` / `10.40.48.0/20` | Private subnet CIDRs (task, DocDB). |
-| `NatGatewayCount` | `1` | **prod-only**: set `2` for one NAT per AZ. Removes the cross-AZ failure mode. +~$33/mo. |
-| `EnableVpcEndpoints` | `false` | **prod-only**: set `true` for interface endpoints (ECR api+dkr, Secrets Manager, SSM, Logs, KMS) + S3 gateway endpoint. Removes NAT bandwidth for AWS service traffic, speeds up Fargate cold starts. ~$84/mo (6 interface endpoints × 2 AZs ≈ ~$7/mo each, plus per-GB data processing; the S3 gateway endpoint is free). |
+| `NatGatewayCount` | `1` | **prod-only**: set `2` for one NAT per AZ. Removes the cross-AZ failure mode. |
+| `EnableVpcEndpoints` | `false` | **prod-only**: set `true` for interface endpoints (ECR api+dkr, Secrets Manager, SSM, Logs, KMS) + S3 gateway endpoint. Removes NAT bandwidth for AWS service traffic, speeds up Fargate cold starts. |
 
 ---
 
