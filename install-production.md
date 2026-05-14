@@ -425,10 +425,23 @@ host. Confirms the JWT verify / encryption / proxy pipeline works
 through the full production topology (CloudFront → ALB → multi-AZ
 ECS → multi-AZ DocDB).
 
+**WAF false-positive on `http://localhost*` redirect URLs.** The admin
+app's `.env.example` ships with
+`OAUTH_REDIRECT_URL=http://localhost:3000/oauth/done`. If your prereq
+Web ACL includes `AWSManagedRulesCommonRuleSet` (recommended baseline),
+its `EC2MetaDataSSRF_BODY` rule blocks every request body containing
+`http://localhost*` with a 403 — including the connection-create POST
+below, which embeds `redirect_url` in the body. Set
+`OAUTH_REDIRECT_URL` to a non-localhost value (any HTTPS URL works for
+this test — the OAuth callback never fires for API-key services like
+OpenWeather) before running this section, or scope-down the rule to
+exclude `/manage/*`.
+
 ```bash
 cd pinkfish-connections-admin-app-main
 cp .env.example .env
 # Edit .env: API_BASE_URL=https://${HOST}
+# Edit .env: OAUTH_REDIRECT_URL=https://${HOST}/oauth/done   (NOT http://localhost*)
 npm start &
 cd ..
 
