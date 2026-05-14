@@ -7,8 +7,12 @@ spells out (a) what's invariant — the runtime contract the container
 relies on — and (b) the common substitutions, with what changes for
 each.
 
-`claude-setup.md` is the right doc to follow if you're using all of
-the defaults. Use this one when you need to deviate.
+[`install-smoke.md`](./install-smoke.md) (cheap, single-AZ) and
+[`install-production.md`](./install-production.md) (multi-AZ, hardened)
+are the right docs to follow if you're using all of the defaults. Use
+this one when you need to deviate. [`claude-setup.md`](./claude-setup.md)
+is the Claude orchestrator entry that routes to whichever install
+profile fits.
 
 ---
 
@@ -57,8 +61,8 @@ real workloads.
    egress IPs (the NAT gateway EIP if you're still using the
    networking stack from this repo; otherwise wherever your container
    gets its public IP from).
-5. Skip the SG wire-up step in `claude-setup.md` § 7 — Atlas
-   isn't in your VPC, so there's no SG to authorize.
+5. Skip the SG wire-up step in your install doc's "Deploy ECS"
+   section — Atlas isn't in your VPC, so there's no SG to authorize.
 
 The §7 install otherwise looks identical: same `pinkconnect-ecs.yaml`,
 same SSM secrets, same everything.
@@ -100,10 +104,21 @@ cluster.
 | `aws` | Per-secret KMS encryption, IAM-scoped access, easy rotation via Secrets Manager APIs, audit trail in CloudTrail. | Costs ~$0.40 per secret per month at scale; AWS-only. |
 | `mongo` | Zero extra infra. Works anywhere the DB works. | Credentials encrypted with `OAUTH_ENCRYPTION_KEY` / `TOKEN_ENCRYPTION_KEY` only — no per-secret KMS, no IAM scoping. The same Mongo backup story applies to the credentials. |
 
-To use `mongo` mode, set `SECRET_STORE_PROVIDER=mongo` in the task
-definition's `Environment:` block (or wherever your env vars come
-from). No IAM changes needed; remove the Secrets Manager grants from
-the task role if you want least-privilege.
+To use `mongo` mode with the bundled CFN, pass `SecretStoreProvider=mongo`
+as a parameter override on the ECS stack — the task def picks it up
+automatically:
+
+```bash
+aws cloudformation deploy --stack-name pinkconnect-ecs ... \
+  --parameter-overrides ... SecretStoreProvider=mongo
+```
+
+(For non-CFN deploys — K8s / docker compose / etc. — set the env var
+`SECRET_STORE_PROVIDER=mongo` however your platform injects env vars.)
+
+No IAM changes needed for the container; if you want least-privilege,
+remove the Secrets Manager grants from the task role since they're
+unused in mongo mode.
 
 ---
 
