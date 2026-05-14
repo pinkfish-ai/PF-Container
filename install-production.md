@@ -29,7 +29,7 @@ these exist — the deploy commands reference them by ARN.
 | **Customer-managed KMS CMK in deploy region** | BYOK encryption for SSM SecureStrings + Secrets Manager + DocDB cluster storage | `aws kms create-key --description "pinkconnect-prod" --region "$AWS_REGION" --profile "$AWS_PROFILE"` — capture the `KeyId` (or alias) and resolve to ARN. |
 | **WAFv2 regional Web ACL in deploy region** | Inputs `WebAclArn` on the ECS stack; protects the ALB. At minimum: rate-based rule + AWSManagedRulesCommonRuleSet | Console (WAF & Shield → Web ACLs → Create) or `aws wafv2 create-web-acl --scope REGIONAL --region "$AWS_REGION"` |
 | **Wildcard ACM cert in `us-east-1`** | One cert covers: CloudFront viewer cert (must be us-east-1), and the ALB cert if you're deploying in us-east-1 too | `aws acm request-certificate --domain-name "*.example.com" --validation-method DNS --region us-east-1 --profile "$AWS_PROFILE"` — insert validation CNAME, wait for ISSUED |
-| **AWS Backup destination vault in a different region** | Cross-region copy target | `aws backup create-backup-vault --backup-vault-name pinkconnect-prod-dr --region us-west-2 --profile "$AWS_PROFILE"` |
+| **AWS Backup destination vault in a different region** | Cross-region copy target | If you want the cross-region copy to also be BYOK-encrypted, create a CMK in the destination region first (`aws kms create-key --region us-west-2 --profile "$AWS_PROFILE"`) and pass its ARN as `--encryption-key-arn` below: `aws backup create-backup-vault --backup-vault-name pinkconnect-prod-dr --encryption-key-arn <dest-region-cmk-arn> --region us-west-2 --profile "$AWS_PROFILE"`. Without `--encryption-key-arn` the vault uses the destination region's `aws/backup` AWS-managed key, so the copied recovery point is **not** BYOK-encrypted even though the source DocDB cluster is. Acceptable for many threat models; document the choice for your compliance team. |
 | **Separate AWS account from any non-prod environment** | Blast-radius separation | Best practice — out of scope for this doc |
 
 Set up env at the top of the session:
@@ -392,9 +392,19 @@ aws backup list-recovery-points-by-backup-vault \
 # Should include a recovery point ARN ending in the destination region
 ```
 
-This validates: destination vault exists, IAM role works, KMS handling
-is correct, cross-region transfer succeeds. CFN already validated the
-`CopyAction` block syntax at deploy time.
+This validates: destination vault exists, IAM role works, cross-region
+transfer succeeds. CFN already validated the `CopyAction` block syntax
+at deploy time.
+
+**About destination-vault encryption:** the copied recovery point is
+encrypted with whatever key the destination vault uses. If you created
+the destination vault without `--encryption-key-arn` (the default per
+the prerequisites table above), the copy uses the destination region's
+`aws/backup` AWS-managed key — **not** the source CMK, even if the
+source DocDB cluster is BYOK-encrypted. To get BYOK end-to-end across
+regions, re-create the destination vault with a CMK in the destination
+region. Acceptable for many threat models to skip; document the choice
+for your compliance team.
 
 ---
 

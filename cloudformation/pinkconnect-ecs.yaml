@@ -118,10 +118,24 @@ Parameters:
     Type: String
     Default: ''
     Description: >
-      Customer-managed KMS CMK ARN for SSM SecureString + Secrets
-      Manager encryption. Empty (default) = use AWS-managed keys. When
-      set, the task / execution roles scope kms:Decrypt + GenerateDataKey
-      to this exact key.
+      Customer-managed KMS CMK ARN. When set, the execution role's
+      kms:Decrypt is scoped to this key (instead of alias/aws/ssm),
+      and the task role gets kms:Decrypt + GenerateDataKey on this key.
+      Effect on what's actually BYOK-encrypted:
+        - SSM SecureString parameters created with --key-id <this CMK>:
+          BYOK at rest, BYOK on read by the task. (See
+          install-production.md §4 for the put-parameter calls.)
+        - DocumentDB cluster storage (pinkconnect-docdb.yaml takes
+          KmsKeyArn separately and passes it to AWS::DocDB::DBCluster).
+      Effect on what is NOT BYOK-encrypted today (gaps tracked in
+      PIN-6349):
+        - Per-connection AWS Secrets Manager entries the container
+          creates at runtime via CreateSecret. The container does not
+          pass KmsKeyId on CreateSecret, so those secrets inherit the
+          account's aws/secretsmanager AWS-managed key regardless of
+          this parameter. BYOK for per-connection creds requires a
+          container-side change to plumb the CMK through to the
+          secret-manager module.
 
   LogRetentionDays:
     Type: Number
