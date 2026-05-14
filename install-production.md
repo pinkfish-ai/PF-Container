@@ -179,11 +179,20 @@ from any smoke deploy in the same account. The ECS stack's
 
 ## 5. ALB cert in deploy region
 
-If the deploy region is **us-east-1**, you can reuse the wildcard
-cert from the prerequisites for both the ALB and CloudFront.
+The ALB needs a cert in its own region (the wildcard cert from the
+prerequisites lives in `us-east-1`). The ECS stack reads it from
+`ALB_CERT_ARN` in §6, so set it now.
 
-If the deploy region is **not us-east-1**, issue a second wildcard
-cert in the ALB's region:
+**If `$AWS_REGION` is `us-east-1`**, you can reuse the prerequisite
+wildcard cert for both the ALB and CloudFront:
+
+```bash
+export ALB_CERT_ARN="$CERT_ARN"
+```
+
+**If `$AWS_REGION` is not `us-east-1`**, issue a second wildcard cert
+in the ALB's region (the prerequisite cert in us-east-1 can't be
+attached to a non-us-east-1 ALB):
 
 ```bash
 export ALB_CERT_ARN=$(aws acm request-certificate \
@@ -191,9 +200,19 @@ export ALB_CERT_ARN=$(aws acm request-certificate \
   --validation-method DNS \
   --region "$AWS_REGION" --profile "$AWS_PROFILE" \
   --query CertificateArn --output text)
+
+# Insert the validation CNAME into Route53 — repeat the same steps as
+# the prerequisite cert. Wait for ISSUED before moving to §6:
+aws acm wait certificate-validated \
+  --certificate-arn "$ALB_CERT_ARN" \
+  --region "$AWS_REGION" --profile "$AWS_PROFILE"
 ```
 
-For us-east-1 deployments, set `ALB_CERT_ARN=$CERT_ARN`.
+Confirm before continuing:
+
+```bash
+test -n "$ALB_CERT_ARN" || echo "ALB_CERT_ARN is empty — STOP and resolve before §6"
+```
 
 ---
 
