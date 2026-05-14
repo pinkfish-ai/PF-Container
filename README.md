@@ -4,10 +4,10 @@ PinkConnect deployed to your own AWS account.
 
 ## Pick a profile
 
-| Profile | Cost | Use case | Install doc |
-|---|---|---|---|
-| **Smoke** | ~$145/mo | Validate the install works on your AWS. Single-AZ DocDB, single NAT, default IAM, no WAF/CDN/cross-region-backup. Throwaway or dev-only. ~30 min to deploy. | [`install-smoke.md`](./install-smoke.md) |
-| **Production** | ~$300–500/mo | Customer-facing service. Multi-AZ DocDB, redundant NAT, VPC endpoints, WAF, BYOK CMK, CloudFront in front of the ALB, AWS Backup with cross-region copy, 365-day log retention. ~45 min to deploy. Has prerequisites the human pre-creates (CMK, WAF Web ACL, wildcard cert, dest backup vault). | [`install-production.md`](./install-production.md) |
+| Profile | Use case | Install doc |
+|---|---|---|
+| **Smoke** | Validate the install works on your AWS. Single-AZ DocDB, single NAT, default IAM, no WAF/CDN/cross-region-backup. Throwaway or dev-only. ~30 min to deploy. | [`install-smoke.md`](./install-smoke.md) |
+| **Production** | Customer-facing service. Multi-AZ DocDB, redundant NAT, VPC endpoints, WAF, BYOK CMK, CloudFront in front of the ALB, AWS Backup with cross-region copy, 365-day log retention. ~45 min to deploy. Has prerequisites the human pre-creates (CMK, WAF Web ACL, wildcard cert, dest backup vault). | [`install-production.md`](./install-production.md) |
 
 Recommended path: smoke first to validate everything works on your
 AWS, then tear it down and install production fresh.

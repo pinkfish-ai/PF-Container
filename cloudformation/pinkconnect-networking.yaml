@@ -36,8 +36,8 @@ Parameters:
       Number of NAT gateways. 1 (default, dev/smoke) — single NAT in AZ
       A; both private subnets route through it (AZ A NAT failure breaks
       AZ B egress). 2 (production) — one NAT per AZ; each private subnet
-      gets its own route table to its local NAT. Adds ~$33/mo per
-      additional NAT but removes a cross-AZ failure mode.
+      gets its own route table to its local NAT. Removes the cross-AZ
+      failure mode.
 
   EnableVpcEndpoints:
     Type: String

@@ -1,13 +1,12 @@
-# PinkConnect — Smoke Install (single-AZ, ~$145/mo)
+# PinkConnect — Smoke Install (single-AZ)
 
 Cheapest deploy that exercises every layer end-to-end. Single-AZ
 DocDB, single NAT, default IAM scoping, no WAF, no CDN, no
 cross-region backup. Intended to prove the install works on your AWS
 before standing up the production profile.
 
-**Cost target:** ~$145/mo if you leave it running 24/7. Drops to
-~$0.50/mo (just the Route53 hosted zone) if you tear down the three
-stacks. See `teardown.md`.
+When not in use, tear down the three stacks (see `teardown.md`); only
+the Route53 hosted zone persists.
 
 **Time to deploy:** ~30 minutes end-to-end. Most of that is waiting
 for DocumentDB (~8 min) and the ALB (~5 min) to provision.
@@ -330,8 +329,7 @@ read `install-production.md` — it's the same install but with:
 - CloudFront in front of the ALB
 - 2+ ECS tasks instead of 1
 
-Total monthly cost goes from ~$145 to ~$300–500. See
-`install-production.md` for the parameter changes.
+See `install-production.md` for the parameter changes.
 
 ---
 

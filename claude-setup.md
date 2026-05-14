@@ -27,14 +27,14 @@ are [`install-smoke.md`](./install-smoke.md) and
    `connect.example.com` for smoke, `prod.example.com` for production).
 4. **Profile: smoke or production?** See the table below. Don't guess
    — the answer changes which install doc you follow, what
-   prerequisites the human needs ready, and what it costs.
+   prerequisites the human needs ready.
 
 ### 2. Decide which install doc to follow
 
-| Customer answer | Follow | Cost | Use case |
-|---|---|---|---|
-| **Smoke** | [`install-smoke.md`](./install-smoke.md) | ~$145/mo | Single-AZ, no WAF, no CDN, no cross-region backup. Validate the install works on the customer's AWS, then either keep running for dev or tear down. |
-| **Production** | [`install-production.md`](./install-production.md) | ~$300–500/mo | Multi-AZ DocDB, redundant NAT, VPC endpoints, WAF on the ALB, BYOK CMK, 365-day logs, 35-day backup retention with cross-region copy, CloudFront in front of the ALB. Customer-facing service. Has prerequisites the human pre-creates (see install-production.md § "Production prerequisites"). |
+| Customer answer | Follow | Use case |
+|---|---|---|
+| **Smoke** | [`install-smoke.md`](./install-smoke.md) | Single-AZ, no WAF, no CDN, no cross-region backup. Validate the install works on the customer's AWS, then either keep running for dev or tear down. |
+| **Production** | [`install-production.md`](./install-production.md) | Multi-AZ DocDB, redundant NAT, VPC endpoints, WAF on the ALB, BYOK CMK, 365-day logs, 35-day backup retention with cross-region copy, CloudFront in front of the ALB. Customer-facing service. Has prerequisites the human pre-creates (see install-production.md § "Production prerequisites"). |
 
 Drive the install end-to-end from whichever install doc the human
 picked. The doc is self-contained — you don't need to merge content

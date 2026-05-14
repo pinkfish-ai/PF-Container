@@ -101,7 +101,7 @@ cluster.
 
 | Mode | Pros | Cons |
 |---|---|---|
-| `aws` | Per-secret KMS encryption, IAM-scoped access, easy rotation via Secrets Manager APIs, audit trail in CloudTrail. | Costs ~$0.40 per secret per month at scale; AWS-only. |
+| `aws` | Per-secret KMS encryption, IAM-scoped access, easy rotation via Secrets Manager APIs, audit trail in CloudTrail. | Per-secret pricing applies at scale; AWS-only. |
 | `mongo` | Zero extra infra. Works anywhere the DB works. | Credentials encrypted with `OAUTH_ENCRYPTION_KEY` / `TOKEN_ENCRYPTION_KEY` only — no per-secret KMS, no IAM scoping. The same Mongo backup story applies to the credentials. |
 
 To use `mongo` mode with the bundled CFN, pass `SecretStoreProvider=mongo`
@@ -229,10 +229,9 @@ at all.
 4. Cloudflare handles HTTPS termination + your domain; the task has
    no public IP.
 
-Tradeoff: adds a Cloudflare dependency. Removes ALB cost (~$17/mo)
-and NAT cost (~$33/mo) if you also drop NAT (the task only needs
-egress, which a NAT or a public subnet with a public IP both
-provide).
+Tradeoff: adds a Cloudflare dependency. Removes the ALB and (if you
+also drop NAT) the NAT — the task only needs egress, which a NAT or a
+public subnet with a public IP both provide.
 
 ### nginx / Caddy in front
 
@@ -269,8 +268,8 @@ Requirements:
 
 ### Drop the NAT gateway
 
-The NAT is the chunkiest fixed cost (~$33/mo in us-east-1). Two
-options to drop it:
+The NAT runs continuously and is the chunkiest fixed line item.
+Two options to drop it:
 
 1. **Run the task in public subnets with a public IP.** Set
    `AssignPublicIp: ENABLED` on the ECS service's

@@ -1,11 +1,8 @@
-# PinkConnect — Production Install (multi-AZ, ~$300–500/mo)
+# PinkConnect — Production Install (multi-AZ)
 
 Production-grade deploy: multi-AZ DocDB, redundant NAT, VPC endpoints,
 WAF, BYOK encryption, CloudFront in front of the ALB, AWS Backup with
-cross-region copy. ~2x the smoke deploy cost, fully redundant.
-
-**Cost target:** ~$300–500/mo depending on traffic, NAT bandwidth, and
-CloudFront price class.
+cross-region copy. Fully redundant.
 
 **Time to deploy:** ~45 minutes end-to-end (a bit longer than smoke
 because CloudFront propagation takes ~10 min and there are 2 extra
