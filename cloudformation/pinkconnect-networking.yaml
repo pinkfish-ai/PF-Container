@@ -1,9 +1,11 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: >
   PinkConnect (self-host) — networking foundation. Creates a VPC with two
-  public and two private subnets across two AZs, an internet gateway, a NAT
-  gateway, and route tables. Outputs the resource IDs so the docdb and ecs
-  stacks can be deployed on top.
+  public + two private subnets across two AZs, an internet gateway, NAT
+  gateway(s), and route tables. Optional VPC endpoints for ECR/SSM/
+  Secrets Manager/Logs/KMS reduce NAT bandwidth + speed up Fargate cold
+  starts. Outputs the resource IDs so the docdb and ecs stacks can be
+  deployed on top.
 
 Parameters:
   EnvironmentName:
@@ -25,6 +27,34 @@ Parameters:
   PrivateSubnetBCidr:
     Type: String
     Default: 10.40.48.0/20
+
+  NatGatewayCount:
+    Type: Number
+    Default: 1
+    AllowedValues: [ 1, 2 ]
+    Description: >
+      Number of NAT gateways. 1 (default, dev/smoke) — single NAT in AZ
+      A; both private subnets route through it (AZ A NAT failure breaks
+      AZ B egress). 2 (production) — one NAT per AZ; each private subnet
+      gets its own route table to its local NAT. Removes the cross-AZ
+      failure mode.
+
+  EnableVpcEndpoints:
+    Type: String
+    AllowedValues: [ 'true', 'false' ]
+    Default: 'false'
+    Description: >
+      'true' creates interface VPC endpoints for ECR (api + dkr),
+      Secrets Manager, SSM, CloudWatch Logs, and KMS, plus a gateway
+      endpoint for S3 (needed by ECR pulls). Speeds up Fargate cold
+      starts and removes NAT bandwidth for those AWS services. Each
+      interface endpoint is created in both private subnets (one ENI
+      per AZ); the gateway endpoint for S3 is in-account routing only.
+      Worth enabling for production deploys.
+
+Conditions:
+  TwoNatsCond: !Equals [ !Ref NatGatewayCount, 2 ]
+  EndpointsCond: !Equals [ !Ref EnableVpcEndpoints, 'true' ]
 
 Resources:
 
@@ -114,45 +144,177 @@ Resources:
       RouteTableId: !Ref PublicRouteTable
       SubnetId: !Ref PublicSubnetB
 
-  NatEip:
+  # ---------- NAT (1 or 2 across AZs) ----------
+
+  NatEipA:
     Type: AWS::EC2::EIP
     DependsOn: InternetGatewayAttachment
     Properties:
       Domain: vpc
 
-  NatGateway:
+  NatGatewayA:
     Type: AWS::EC2::NatGateway
     Properties:
-      AllocationId: !GetAtt NatEip.AllocationId
+      AllocationId: !GetAtt NatEipA.AllocationId
       SubnetId: !Ref PublicSubnetA
       Tags:
-        - { Key: Name, Value: !Sub '${EnvironmentName}-natgw' }
+        - { Key: Name, Value: !Sub '${EnvironmentName}-natgw-a' }
 
-  PrivateRouteTable:
+  NatEipB:
+    Type: AWS::EC2::EIP
+    Condition: TwoNatsCond
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      Domain: vpc
+
+  NatGatewayB:
+    Type: AWS::EC2::NatGateway
+    Condition: TwoNatsCond
+    Properties:
+      AllocationId: !GetAtt NatEipB.AllocationId
+      SubnetId: !Ref PublicSubnetB
+      Tags:
+        - { Key: Name, Value: !Sub '${EnvironmentName}-natgw-b' }
+
+  # ---------- Per-AZ private route tables ----------
+  # In single-NAT mode, both private RTs point at NatGatewayA. In
+  # two-NAT mode, each AZ routes to its local NAT — removing the
+  # cross-AZ failure mode where AZ A NAT outage breaks AZ B egress.
+
+  PrivateRouteTableA:
     Type: AWS::EC2::RouteTable
     Properties:
       VpcId: !Ref Vpc
       Tags:
-        - { Key: Name, Value: !Sub '${EnvironmentName}-private-rt' }
+        - { Key: Name, Value: !Sub '${EnvironmentName}-private-rt-a' }
 
-  PrivateDefaultRoute:
+  PrivateRouteTableB:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+      Tags:
+        - { Key: Name, Value: !Sub '${EnvironmentName}-private-rt-b' }
+
+  PrivateDefaultRouteA:
     Type: AWS::EC2::Route
     Properties:
-      RouteTableId: !Ref PrivateRouteTable
+      RouteTableId: !Ref PrivateRouteTableA
       DestinationCidrBlock: 0.0.0.0/0
-      NatGatewayId: !Ref NatGateway
+      NatGatewayId: !Ref NatGatewayA
+
+  PrivateDefaultRouteB:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTableB
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !If [ TwoNatsCond, !Ref NatGatewayB, !Ref NatGatewayA ]
 
   PrivateSubnetARouteAssoc:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
-      RouteTableId: !Ref PrivateRouteTable
+      RouteTableId: !Ref PrivateRouteTableA
       SubnetId: !Ref PrivateSubnetA
 
   PrivateSubnetBRouteAssoc:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
-      RouteTableId: !Ref PrivateRouteTable
+      RouteTableId: !Ref PrivateRouteTableB
       SubnetId: !Ref PrivateSubnetB
+
+  # ---------- VPC endpoints (optional) ----------
+
+  VpcEndpointSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Condition: EndpointsCond
+    Properties:
+      GroupDescription: !Sub '${EnvironmentName} VPC endpoints SG'
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        # HTTPS from anywhere in the VPC — AWS service endpoints listen
+        # on 443 over the interface ENI.
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: !Ref VpcCidr
+      Tags:
+        - { Key: Name, Value: !Sub '${EnvironmentName}-vpce-sg' }
+
+  S3Endpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Condition: EndpointsCond
+    Properties:
+      VpcId: !Ref Vpc
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.s3'
+      VpcEndpointType: Gateway
+      RouteTableIds:
+        - !Ref PrivateRouteTableA
+        - !Ref PrivateRouteTableB
+
+  EcrApiEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Condition: EndpointsCond
+    Properties:
+      VpcId: !Ref Vpc
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.ecr.api'
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds: [ !Ref PrivateSubnetA, !Ref PrivateSubnetB ]
+      SecurityGroupIds: [ !Ref VpcEndpointSecurityGroup ]
+
+  EcrDkrEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Condition: EndpointsCond
+    Properties:
+      VpcId: !Ref Vpc
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.ecr.dkr'
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds: [ !Ref PrivateSubnetA, !Ref PrivateSubnetB ]
+      SecurityGroupIds: [ !Ref VpcEndpointSecurityGroup ]
+
+  LogsEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Condition: EndpointsCond
+    Properties:
+      VpcId: !Ref Vpc
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.logs'
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds: [ !Ref PrivateSubnetA, !Ref PrivateSubnetB ]
+      SecurityGroupIds: [ !Ref VpcEndpointSecurityGroup ]
+
+  SsmEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Condition: EndpointsCond
+    Properties:
+      VpcId: !Ref Vpc
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.ssm'
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds: [ !Ref PrivateSubnetA, !Ref PrivateSubnetB ]
+      SecurityGroupIds: [ !Ref VpcEndpointSecurityGroup ]
+
+  SecretsManagerEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Condition: EndpointsCond
+    Properties:
+      VpcId: !Ref Vpc
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.secretsmanager'
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds: [ !Ref PrivateSubnetA, !Ref PrivateSubnetB ]
+      SecurityGroupIds: [ !Ref VpcEndpointSecurityGroup ]
+
+  KmsEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Condition: EndpointsCond
+    Properties:
+      VpcId: !Ref Vpc
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.kms'
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds: [ !Ref PrivateSubnetA, !Ref PrivateSubnetB ]
+      SecurityGroupIds: [ !Ref VpcEndpointSecurityGroup ]
 
 Outputs:
   VpcId:

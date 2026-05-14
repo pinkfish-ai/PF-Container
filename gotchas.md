@@ -1,0 +1,23 @@
+# PinkConnect — Gotchas
+
+Non-obvious behaviors. Read this **before** deploying, not after
+hitting them. Each entry is something we (or the gate that reviewed
+the install plan) ran into the hard way.
+
+| Gotcha | Detail |
+|---|---|
+| **Image is arm64-only** | The task definition pins `CpuArchitecture: ARM64`. Don't override unless Pinkfish gives you an amd64 build. |
+| **SG wire-up timing** | The mid-deploy authorize-security-group-ingress dance (see `install-smoke.md` § "Deploy ECS") is mandatory. Wait for the stack to finish before authorizing and the first task fails health checks, CFN rolls the stack back. Authorize while the deploy is still running. |
+| **`custom_fields` vs `credentials`** | For API-key services, the per-connection key is a `custom_fields` value (because the service definition declares it under `custom_fields`). For OAuth services, `credentials.client_id` + `credentials.client_secret` at deploy time, no per-connection custom_fields. |
+| **`is_admin` claim** | `GET /admin/*` requires `is_admin: true` in the JWT. The admin app's UI ships a checkbox; if you're hitting `/api/admin/*` from elsewhere, set header `x-is-admin: true` (admin-app proxy) or sign the JWT with the claim directly. |
+| **Catalog and connections panels are snapshots** | The admin app doesn't auto-refresh. After every deploy/create/revoke, click "Load catalog" / "Load connections" again. Or query the JSON endpoints directly. |
+| **`ImageTagMutability: IMMUTABLE`** | Pushing a new image requires a fresh tag. The CFN `ContainerImage` parameter has to change to trigger a redeploy — there's no `:latest` shortcut. |
+| **DocDB password char set** | `@`, `/`, `"` break Mongo URIs. The install docs' generator strips them; if a human picks the password, validate. |
+| **`/health/ready` is 503 until ready** | The container deliberately returns 503 on `/health/ready` until every required env var resolves. ALB target health check uses this exact path, so a 503 here keeps the task out of service. Logs print `mcp.server.config.invalid` listing what's missing. |
+| **NAT gateway runs continuously** | The networking stack creates a NAT regardless of whether the service is handling traffic (or 2× when `NatGatewayCount=2`). Tear down when not in use; see `teardown.md`. |
+| **Encryption keys are unrecoverable** | If you lose `/pinkconnect/oauth-encryption-key` or `/pinkconnect/token-encryption-key`, every stored per-connection credential is dead. Back them up like a DB master password. |
+| **JWT keypair regen requires force-redeploy** | If you regenerate the keypair and update `/pinkconnect/jwt-public-key`, the running task is still holding the old value in env. `aws ecs update-service --force-new-deployment` to pull the new value. Existing connections survive (they're keyed on JWT claims, not the signing key). |
+| **CloudFront certs must be in us-east-1** | The optional CDN stack's `CloudFrontCertificateArn` must reference a cert in us-east-1 regardless of the ALB region. The ALB cert is separate (in the ALB's region) and must cover the `OriginHostname` (so HTTPS-to-origin validates). A wildcard cert in us-east-1 on the parent domain is the easiest way to satisfy both. |
+| **CDN ↔ ECS DNS coordination** | When fronting with CloudFront, deploy the ECS stack with `CreateDnsRecord=false` and a non-empty `OriginHostname`. Then the CDN stack owns the public DNS for `CustomDomainName`, and the ECS stack creates a second A-alias at `OriginHostname` for the ALB. Forgetting one half causes duplicate-record-set errors or 502s. |
+| **AWS Backup `CopyAction` only fires on scheduled runs** | `aws backup start-backup-job` creates an *ad-hoc* recovery point that bypasses the plan's `CopyAction`. To validate the cross-region copy path before the plan's first scheduled firing, run `start-backup-job` then `start-copy-job` explicitly. The plan's `CopyAction` block itself is syntactically validated by CFN at deploy time. |
+| **Cross-region backup destination vault is the customer's responsibility** | The `pinkconnect-backup` stack lives in one region and CFN can't reach across regions to auto-create the destination vault. Create it with `aws backup create-backup-vault --backup-vault-name <name> --region <dest-region>` before deploying the backup stack with `DestinationBackupVaultArn=<arn>`. |

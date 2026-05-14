@@ -1,0 +1,154 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  PinkConnect (self-host) — optional AWS Backup stack for the
+  DocumentDB cluster. Creates a backup vault in the source region, an
+  AWS Backup IAM service role, a backup plan with one daily rule, and
+  a backup selection targeting the DocDB cluster by ARN. Optional
+  cross-region copy when DestinationBackupVaultArn is set.
+
+  Cross-region prerequisites: the destination vault must already
+  exist in the target region — CFN cannot create it from this stack
+  (one stack = one region). Customer creates the destination vault
+  separately:
+
+    aws backup create-backup-vault \
+      --backup-vault-name <name> \
+      --region <dest-region>
+
+  If the source DocDB cluster is encrypted with a customer-managed
+  CMK, the destination vault should reference a CMK in the destination
+  region too. This stack documents the expectation; vault creation
+  remains the customer's responsibility.
+
+Parameters:
+
+  EnvironmentName:
+    Type: String
+    Default: pinkconnect
+
+  DocDbClusterArn:
+    Type: String
+    Description: >
+      ARN of the DocumentDB cluster to back up. From the
+      pinkconnect-docdb stack's DocDbClusterArn output. DocDB cluster
+      ARNs use the `rds` service prefix per AWS convention.
+
+  RetentionDays:
+    Type: Number
+    Default: 35
+    MinValue: 1
+    MaxValue: 35
+    Description: >
+      How many days to retain each recovery point in the source
+      vault. AWS Backup's plan-managed retention. Default 35 (max
+      allowed in a BackupPlan rule). Independent from the DocDB
+      cluster's own automated backup retention.
+
+  ScheduleExpression:
+    Type: String
+    Default: 'cron(0 5 ? * * *)'
+    Description: >
+      Cron expression in UTC for the backup schedule. Default is
+      daily at 05:00 UTC. AWS Backup requires the 6-field cron form
+      (minutes, hours, day-of-month, month, day-of-week, year). Pick
+      a low-traffic window.
+
+  StartWindowMinutes:
+    Type: Number
+    Default: 60
+    Description: >
+      Minutes after the scheduled time within which the backup job
+      must start; otherwise AWS Backup treats it as a failed run.
+
+  CompletionWindowMinutes:
+    Type: Number
+    Default: 180
+    Description: >
+      Minutes within which the backup job must complete after it
+      starts; otherwise AWS Backup treats it as failed.
+
+  DestinationBackupVaultArn:
+    Type: String
+    Default: ''
+    Description: >
+      Optional ARN of a backup vault in a different region for
+      cross-region copy. Empty (default) = single-region backups
+      only. ARN format:
+      arn:aws:backup:<dest-region>:<account>:backup-vault:<name>.
+      The vault must already exist in the destination region. If the
+      source DocDB cluster is BYOK-encrypted, the destination vault
+      should reference a CMK in the destination region; AWS Backup
+      re-encrypts the recovery point with whatever key the
+      destination vault is configured to use.
+
+Conditions:
+  HasCrossRegionCopyCond: !Not [ !Equals [ !Ref DestinationBackupVaultArn, '' ] ]
+
+Resources:
+
+  BackupVault:
+    Type: AWS::Backup::BackupVault
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BackupVaultName: !Sub '${EnvironmentName}-vault'
+
+  # AWS Backup service role. Trust policy = backup.amazonaws.com.
+  # Managed policies cover the backup and restore use cases; least-
+  # privilege scoped to the AWS Backup service principal.
+  BackupServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${EnvironmentName}-backup-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: backup.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForBackup
+        - arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForRestores
+
+  BackupPlan:
+    Type: AWS::Backup::BackupPlan
+    Properties:
+      BackupPlan:
+        BackupPlanName: !Sub '${EnvironmentName}-plan'
+        BackupPlanRule:
+          - RuleName: daily
+            TargetBackupVault: !Ref BackupVault
+            ScheduleExpression: !Ref ScheduleExpression
+            StartWindowMinutes: !Ref StartWindowMinutes
+            CompletionWindowMinutes: !Ref CompletionWindowMinutes
+            Lifecycle:
+              DeleteAfterDays: !Ref RetentionDays
+            CopyActions: !If
+              - HasCrossRegionCopyCond
+              - - DestinationBackupVaultArn: !Ref DestinationBackupVaultArn
+                  Lifecycle:
+                    DeleteAfterDays: !Ref RetentionDays
+              - !Ref AWS::NoValue
+
+  BackupSelection:
+    Type: AWS::Backup::BackupSelection
+    Properties:
+      BackupPlanId: !Ref BackupPlan
+      BackupSelection:
+        SelectionName: !Sub '${EnvironmentName}-selection'
+        IamRoleArn: !GetAtt BackupServiceRole.Arn
+        Resources:
+          - !Ref DocDbClusterArn
+
+Outputs:
+  BackupVaultName:
+    Value: !Ref BackupVault
+  BackupVaultArn:
+    Value: !GetAtt BackupVault.BackupVaultArn
+  BackupRoleArn:
+    Value: !GetAtt BackupServiceRole.Arn
+    Description: >
+      Pass as --iam-role-arn when running aws backup start-backup-job
+      or start-copy-job for on-demand operations.
+  BackupPlanId:
+    Value: !Ref BackupPlan

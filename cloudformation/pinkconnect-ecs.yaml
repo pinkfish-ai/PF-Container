@@ -48,6 +48,22 @@ Parameters:
     Type: String
     Default: pinkconnect/
 
+  SecretStoreProvider:
+    Type: String
+    AllowedValues: [ aws, mongo ]
+    Default: aws
+    Description: >
+      Where per-connection OAuth credentials are stored. `aws` (default)
+      uses AWS Secrets Manager — KMS-encrypted, IAM-scoped, but capped
+      at AWS's regional secret quota (500K per region by default; ask
+      AWS to raise it for larger deployments). `mongo` stores them in
+      the same MongoDB cluster as the rest of the data — no extra
+      infra and no AWS limit, but credentials are encrypted only by the
+      container's OAUTH_ENCRYPTION_KEY / TOKEN_ENCRYPTION_KEY env vars
+      (no per-secret KMS, no IAM scoping). Recommended: `aws` for
+      production unless you've hit the secret quota; `mongo` is a
+      legitimate workaround at very high scale or for local-only dev.
+
   # ---- Feature flags ----
   UsageTrackingEnabled:
     Type: String
@@ -73,6 +89,9 @@ Parameters:
     Type: Number
     Default: 1
     MinValue: 1
+    Description: >
+      Steady-state task count. Default 1 for smoke deploys; set to 2+
+      for production (one task per AZ minimum).
   MaxCount:
     Type: Number
     Default: 5
@@ -85,9 +104,91 @@ Parameters:
     Type: String
     Default: '2048'
 
+  # ---- Hardening flags ----
+  InternalAlb:
+    Type: String
+    AllowedValues: [ 'true', 'false' ]
+    Default: 'false'
+    Description: >
+      'true' makes the ALB internal-only (private subnets, no internet
+      ingress). Use when PinkConnect is reached over VPN / PrivateLink
+      / a corporate network only. Default 'false' = internet-facing.
+
+  KmsKeyArn:
+    Type: String
+    Default: ''
+    Description: >
+      Customer-managed KMS CMK ARN. When set, the execution role's
+      kms:Decrypt is scoped to this exact key. When empty (default),
+      the execution role's kms:Decrypt uses Resource: '*' constrained
+      by a kms:ViaService=ssm.<region>.amazonaws.com condition (the
+      AWS-managed alias/aws/ssm is the SSM service's default key, but
+      IAM can't constrain by alias ARN — the via-service condition is
+      the supported equivalent). The task role gets kms:Decrypt +
+      GenerateDataKey on the customer-managed CMK when KmsKeyArn is set.
+      Effect on what's actually BYOK-encrypted:
+        - SSM SecureString parameters created with --key-id <this CMK>:
+          BYOK at rest, BYOK on read by the task. (See
+          install-production.md §4 for the put-parameter calls.)
+        - DocumentDB cluster storage (pinkconnect-docdb.yaml takes
+          KmsKeyArn separately and passes it to AWS::DocDB::DBCluster).
+      Effect on what is NOT BYOK-encrypted today (gaps tracked in
+      PIN-6349):
+        - Per-connection AWS Secrets Manager entries the container
+          creates at runtime via CreateSecret. The container does not
+          pass KmsKeyId on CreateSecret, so those secrets inherit the
+          account's aws/secretsmanager AWS-managed key regardless of
+          this parameter. BYOK for per-connection creds requires a
+          container-side change to plumb the CMK through to the
+          secret-manager module.
+
+  LogRetentionDays:
+    Type: Number
+    Default: 90
+    AllowedValues: [ 1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1827, 3653 ]
+    Description: >
+      CloudWatch Logs retention in days. Default 90 covers most SOC2 /
+      ISO27001 thresholds. Bump to 365+ for HIPAA / SOX / FedRAMP.
+
+  WebAclArn:
+    Type: String
+    Default: ''
+    Description: >
+      Optional AWS WAFv2 Web ACL ARN to associate with the ALB. Empty
+      (default) = no WAF. Recommended for production: associate a Web
+      ACL with at least rate-based + AWSManagedRulesCommonRuleSet.
+
+  CreateDnsRecord:
+    Type: String
+    AllowedValues: [ 'true', 'false' ]
+    Default: 'true'
+    Description: >
+      'true' (default) creates a Route53 A-alias for CustomDomainName
+      pointing at the ALB — the normal smoke/standalone deployment
+      shape. Set 'false' when fronting PinkConnect with CloudFront
+      (via the optional pinkconnect-cdn stack) — the CDN stack owns
+      the customer-facing DNS record in that mode and the ALB is
+      reached via OriginHostname instead.
+
+  OriginHostname:
+    Type: String
+    Default: ''
+    Description: >
+      Optional second Route53 A-alias for the ALB at a different
+      hostname (e.g. origin-prod.example.com). Used by the CDN stack
+      as the CloudFront → ALB origin so HTTPS-to-origin can validate
+      against the ALB cert. Empty (default) = no extra record. When
+      set, the customer's ALB cert must cover this hostname (a
+      wildcard cert on the parent domain is easiest).
+
 Conditions:
   UsageTrackingEnabledCond: !Equals [ !Ref UsageTrackingEnabled, 'true' ]
   AuthModeInternalCond: !Equals [ !Ref AuthMode, internal ]
+  InternalAlbCond: !Equals [ !Ref InternalAlb, 'true' ]
+  HasCustomKmsKeyCond: !Not [ !Equals [ !Ref KmsKeyArn, '' ] ]
+  HasWebAclCond: !Not [ !Equals [ !Ref WebAclArn, '' ] ]
+  CreateDnsRecordCond: !Equals [ !Ref CreateDnsRecord, 'true' ]
+  HasOriginHostnameCond: !Not [ !Equals [ !Ref OriginHostname, '' ] ]
 
 Resources:
 
@@ -142,11 +243,12 @@ Resources:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties:
       Name: !Sub '${EnvironmentName}-alb'
-      Scheme: internet-facing
+      Scheme: !If [ InternalAlbCond, internal, internet-facing ]
       Type: application
-      Subnets:
-        - !Ref PublicSubnetAId
-        - !Ref PublicSubnetBId
+      Subnets: !If
+        - InternalAlbCond
+        - [ !Ref PrivateSubnetAId, !Ref PrivateSubnetBId ]
+        - [ !Ref PublicSubnetAId, !Ref PublicSubnetBId ]
       SecurityGroups: [ !Ref AlbSecurityGroup ]
 
   TargetGroup:
@@ -191,6 +293,16 @@ Resources:
         - Type: forward
           TargetGroupArn: !Ref TargetGroup
 
+  # Optional WAF v2 Web ACL association. Only created when WebAclArn is
+  # provided. Web ACL itself lives outside this stack so customers can
+  # apply organization-wide rule sets without re-deploying PinkConnect.
+  WebAclAssociation:
+    Type: AWS::WAFv2::WebACLAssociation
+    Condition: HasWebAclCond
+    Properties:
+      ResourceArn: !Ref LoadBalancer
+      WebACLArn: !Ref WebAclArn
+
   # ---------- IAM ----------
 
   ExecutionRole:
@@ -213,9 +325,24 @@ Resources:
                   - ssm:GetParameter
                   - ssm:GetParameters
                 Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${SsmPrefix}/*'
+              # KMS decrypt is scoped two ways:
+              #   - With a customer-managed CMK (KmsKeyArn set), we pin the
+              #     resource to that exact key ARN.
+              #   - Without one, we constrain by service via kms:ViaService
+              #     (Resource: '*' is required because IAM does not accept
+              #     KMS alias ARNs in Resource — they only resolve via
+              #     conditions or through the key policy itself).
               - Effect: Allow
                 Action: kms:Decrypt
-                Resource: '*'
+                Resource: !If
+                  - HasCustomKmsKeyCond
+                  - !Ref KmsKeyArn
+                  - '*'
+                Condition: !If
+                  - HasCustomKmsKeyCond
+                  - !Ref AWS::NoValue
+                  - StringEquals:
+                      kms:ViaService: !Sub 'ssm.${AWS::Region}.amazonaws.com'
 
   TaskRole:
     Type: AWS::IAM::Role
@@ -230,6 +357,10 @@ Resources:
         - PolicyName: SecretsManagerScoped
           PolicyDocument:
             Statement:
+              # Scoped to ${SecretStorePrefix}* — the namespace PinkConnect
+              # writes per-connection credentials under. Per-resource scoping
+              # works for all of these actions except ListSecrets, which is
+              # account-wide by design.
               - Effect: Allow
                 Action:
                   - secretsmanager:GetSecretValue
@@ -238,9 +369,20 @@ Resources:
                   - secretsmanager:UpdateSecret
                   - secretsmanager:PutSecretValue
                   - secretsmanager:DeleteSecret
-                  - secretsmanager:ListSecrets
                   - secretsmanager:TagResource
+                Resource: !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${SecretStorePrefix}*'
+              - Effect: Allow
+                Action: secretsmanager:ListSecrets
                 Resource: '*'
+              # Decrypt secrets encrypted with our CMK, if one was provided.
+              - !If
+                - HasCustomKmsKeyCond
+                - Effect: Allow
+                  Action:
+                    - kms:Decrypt
+                    - kms:GenerateDataKey
+                  Resource: !Ref KmsKeyArn
+                - !Ref AWS::NoValue
 
   # ---------- Logging ----------
 
@@ -248,7 +390,7 @@ Resources:
     Type: AWS::Logs::LogGroup
     Properties:
       LogGroupName: !Sub '/ecs/${EnvironmentName}'
-      RetentionInDays: 14
+      RetentionInDays: !Ref LogRetentionDays
 
   # ---------- Task definition ----------
 
@@ -276,7 +418,7 @@ Resources:
             - { Name: NODE_ENV, Value: production }
             - { Name: PORT, Value: '8090' }
             - { Name: CALLBACK_URL, Value: !Ref CallbackUrl }
-            - { Name: SECRET_STORE_PROVIDER, Value: aws }
+            - { Name: SECRET_STORE_PROVIDER, Value: !Ref SecretStoreProvider }
             - { Name: SECRET_STORE_PREFIX, Value: !Ref SecretStorePrefix }
             - { Name: USAGE_TRACKING_ENABLED, Value: !Ref UsageTrackingEnabled }
             - { Name: AUTH_MODE, Value: !Ref AuthMode }
@@ -328,6 +470,9 @@ Resources:
       DeploymentConfiguration:
         MinimumHealthyPercent: 100
         MaximumPercent: 200
+        DeploymentCircuitBreaker:
+          Enable: true
+          Rollback: true
       NetworkConfiguration:
         AwsvpcConfiguration:
           AssignPublicIp: DISABLED
@@ -378,12 +523,30 @@ Resources:
         ScaleOutCooldown: 30
 
   # ---------- DNS ----------
+  # Customer-facing record: skipped when CreateDnsRecord=false (e.g.
+  # when fronting with CloudFront via pinkconnect-cdn.yaml, which owns
+  # the CustomDomainName record in that mode).
 
   DnsRecord:
     Type: AWS::Route53::RecordSet
+    Condition: CreateDnsRecordCond
     Properties:
       HostedZoneId: !Ref Route53HostedZoneId
       Name: !Ref CustomDomainName
+      Type: A
+      AliasTarget:
+        DNSName: !GetAtt LoadBalancer.DNSName
+        HostedZoneId: !GetAtt LoadBalancer.CanonicalHostedZoneID
+        EvaluateTargetHealth: false
+
+  # Optional second record at OriginHostname, used as the CloudFront
+  # origin so HTTPS-to-origin validates against the ALB cert.
+  OriginDnsRecord:
+    Type: AWS::Route53::RecordSet
+    Condition: HasOriginHostnameCond
+    Properties:
+      HostedZoneId: !Ref Route53HostedZoneId
+      Name: !Ref OriginHostname
       Type: A
       AliasTarget:
         DNSName: !GetAtt LoadBalancer.DNSName

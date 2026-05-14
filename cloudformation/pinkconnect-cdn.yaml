@@ -1,0 +1,120 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  PinkConnect (self-host) — optional CloudFront distribution in front
+  of the ALB created by pinkconnect-ecs. Caches nothing by default
+  (all PinkConnect responses are dynamic) but provides edge presence,
+  WAF integration at the edge, and DDoS absorption via AWS Shield.
+
+  Deploy after pinkconnect-ecs is up with `CreateDnsRecord=false` and
+  `OriginHostname=<origin-hostname>`. This stack owns the customer-
+  facing Route53 A-alias (pointing CustomDomainName at CloudFront);
+  pinkconnect-ecs owns the OriginHostname A-alias (pointing at the
+  ALB) so CloudFront → ALB HTTPS-to-origin validates against the ALB
+  cert.
+
+  Cert constraint: CloudFront only accepts certs in us-east-1
+  regardless of where the ALB is deployed. The ALB cert (in the ALB's
+  region) must cover OriginHostname; the CloudFront cert (us-east-1)
+  must cover CustomDomainName. A wildcard cert on the parent zone in
+  us-east-1 (e.g. `*.example.com`) is the easiest way to satisfy
+  both — issue once, reference in both stacks.
+
+Parameters:
+
+  EnvironmentName:
+    Type: String
+    Default: pinkconnect
+
+  CustomDomainName:
+    Type: String
+    Description: >
+      Customer-facing hostname (e.g. connect.example.com or
+      prod.example.com). This stack creates the Route53 A-alias for
+      this name pointing at CloudFront.
+
+  OriginHostname:
+    Type: String
+    Description: >
+      Hostname the ALB is reachable at (set as OriginHostname on the
+      pinkconnect-ecs stack, which creates the A-alias pointing at
+      the ALB). Must be different from CustomDomainName.
+
+  CloudFrontCertificateArn:
+    Type: String
+    Description: >
+      ACM certificate ARN for CustomDomainName. **Must be in us-east-1**
+      regardless of ALB region — this is a CloudFront constraint.
+
+  Route53HostedZoneId:
+    Type: AWS::Route53::HostedZone::Id
+    Description: Route53 hosted zone containing CustomDomainName.
+
+  PriceClass:
+    Type: String
+    Default: PriceClass_100
+    AllowedValues: [ PriceClass_100, PriceClass_200, PriceClass_All ]
+    Description: >
+      CloudFront price class. PriceClass_100 (default) = NA + EU only,
+      cheapest. PriceClass_200 adds Asia/Middle East/Africa.
+      PriceClass_All includes South America + Australia.
+
+Resources:
+
+  Distribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        IPV6Enabled: true
+        Comment: !Sub '${EnvironmentName} PinkConnect CDN'
+        PriceClass: !Ref PriceClass
+        HttpVersion: http2
+        Aliases:
+          - !Ref CustomDomainName
+        ViewerCertificate:
+          AcmCertificateArn: !Ref CloudFrontCertificateArn
+          MinimumProtocolVersion: TLSv1.2_2021
+          SslSupportMethod: sni-only
+        Origins:
+          - Id: alb-origin
+            DomainName: !Ref OriginHostname
+            CustomOriginConfig:
+              OriginProtocolPolicy: https-only
+              OriginSSLProtocols: [ TLSv1.2 ]
+              OriginReadTimeout: 60
+              OriginKeepaliveTimeout: 5
+        DefaultCacheBehavior:
+          TargetOriginId: alb-origin
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [ GET, HEAD, OPTIONS, PUT, POST, PATCH, DELETE ]
+          CachedMethods: [ GET, HEAD ]
+          Compress: true
+          # AWS-managed policies (stable IDs):
+          # CachingDisabled — no caching of dynamic API responses
+          CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+          # AllViewerExceptHostHeader — forwards every viewer header,
+          # query string, and cookie except Host (so the ALB cert only
+          # needs to cover OriginHostname, not CustomDomainName).
+          OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac
+
+  DnsRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref Route53HostedZoneId
+      Name: !Ref CustomDomainName
+      Type: A
+      AliasTarget:
+        # CloudFront's global hosted zone ID — fixed value for every
+        # CloudFront distribution.
+        HostedZoneId: Z2FDTNDATAQYW2
+        DNSName: !GetAtt Distribution.DomainName
+        EvaluateTargetHealth: false
+
+Outputs:
+  DistributionId:
+    Value: !Ref Distribution
+  DistributionDomainName:
+    Value: !GetAtt Distribution.DomainName
+    Description: CloudFront-assigned distribution domain (e.g. dxxxxx.cloudfront.net).
+  PublicUrl:
+    Value: !Sub 'https://${CustomDomainName}'
