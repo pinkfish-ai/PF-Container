@@ -119,8 +119,13 @@ Parameters:
     Default: ''
     Description: >
       Customer-managed KMS CMK ARN. When set, the execution role's
-      kms:Decrypt is scoped to this key (instead of alias/aws/ssm),
-      and the task role gets kms:Decrypt + GenerateDataKey on this key.
+      kms:Decrypt is scoped to this exact key. When empty (default),
+      the execution role's kms:Decrypt uses Resource: '*' constrained
+      by a kms:ViaService=ssm.<region>.amazonaws.com condition (the
+      AWS-managed alias/aws/ssm is the SSM service's default key, but
+      IAM can't constrain by alias ARN — the via-service condition is
+      the supported equivalent). The task role gets kms:Decrypt +
+      GenerateDataKey on the customer-managed CMK when KmsKeyArn is set.
       Effect on what's actually BYOK-encrypted:
         - SSM SecureString parameters created with --key-id <this CMK>:
           BYOK at rest, BYOK on read by the task. (See
