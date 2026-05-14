@@ -320,16 +320,24 @@ Resources:
                   - ssm:GetParameter
                   - ssm:GetParameters
                 Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${SsmPrefix}/*'
-              # KMS decrypt is scoped to the alias used by SecureString SSM
-              # parameters by default. If you've put SSM parameters under a
-              # customer-managed CMK, pass its ARN as KmsKeyArn and we'll
-              # scope to that exact key instead of the AWS-managed alias.
+              # KMS decrypt is scoped two ways:
+              #   - With a customer-managed CMK (KmsKeyArn set), we pin the
+              #     resource to that exact key ARN.
+              #   - Without one, we constrain by service via kms:ViaService
+              #     (Resource: '*' is required because IAM does not accept
+              #     KMS alias ARNs in Resource — they only resolve via
+              #     conditions or through the key policy itself).
               - Effect: Allow
                 Action: kms:Decrypt
                 Resource: !If
                   - HasCustomKmsKeyCond
                   - !Ref KmsKeyArn
-                  - !Sub 'arn:aws:kms:${AWS::Region}:${AWS::AccountId}:alias/aws/ssm'
+                  - '*'
+                Condition: !If
+                  - HasCustomKmsKeyCond
+                  - !Ref AWS::NoValue
+                  - StringEquals:
+                      kms:ViaService: !Sub 'ssm.${AWS::Region}.amazonaws.com'
 
   TaskRole:
     Type: AWS::IAM::Role

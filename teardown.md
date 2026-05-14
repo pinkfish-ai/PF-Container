@@ -113,6 +113,18 @@ aws cloudformation delete-stack --stack-name pinkconnect-ecs-prod \
   --region "$AWS_REGION" --profile "$AWS_PROFILE"
 aws cloudformation wait stack-delete-complete --stack-name pinkconnect-ecs-prod \
   --region "$AWS_REGION" --profile "$AWS_PROFILE"
+
+# DocDB cluster has DeletionProtection=true (production install sets
+# this so the cluster cannot be accidentally deleted). Disable it
+# before the delete-stack call, otherwise the stack delete fails with
+# `Cannot delete protected Cluster`. Skip if you set DeletionProtection
+# to false at install time (the default).
+aws docdb modify-db-cluster \
+  --db-cluster-identifier pinkconnect-prod-docdb \
+  --no-deletion-protection \
+  --apply-immediately \
+  --region "$AWS_REGION" --profile "$AWS_PROFILE" 2>/dev/null || true
+
 aws cloudformation delete-stack --stack-name pinkconnect-docdb-prod \
   --region "$AWS_REGION" --profile "$AWS_PROFILE"
 aws cloudformation wait stack-delete-complete --stack-name pinkconnect-docdb-prod \

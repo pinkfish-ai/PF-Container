@@ -127,7 +127,8 @@ aws cloudformation deploy \
     InstanceClass=db.r6g.large \
     InstanceCount=2 \
     BackupRetentionDays=35 \
-    KmsKeyArn="$KMS_KEY_ARN"
+    KmsKeyArn="$KMS_KEY_ARN" \
+    DeletionProtection=true
 ```
 
 ~10–12 min (2 instances + larger class take longer). Capture:

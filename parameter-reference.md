@@ -15,7 +15,7 @@ behavior unless noted; the production install changes the ones flagged
 | `PublicSubnetACidr` / `PublicSubnetBCidr` | `10.40.0.0/20` / `10.40.16.0/20` | Public subnet CIDRs (ALB, NAT). Must fit inside `VpcCidr`. |
 | `PrivateSubnetACidr` / `PrivateSubnetBCidr` | `10.40.32.0/20` / `10.40.48.0/20` | Private subnet CIDRs (task, DocDB). |
 | `NatGatewayCount` | `1` | **prod-only**: set `2` for one NAT per AZ. Removes the cross-AZ failure mode. +~$33/mo. |
-| `EnableVpcEndpoints` | `false` | **prod-only**: set `true` for interface endpoints (ECR api+dkr, Secrets Manager, SSM, Logs, KMS) + S3 gateway endpoint. Removes NAT bandwidth for AWS service traffic, speeds up Fargate cold starts. ~$42/mo. |
+| `EnableVpcEndpoints` | `false` | **prod-only**: set `true` for interface endpoints (ECR api+dkr, Secrets Manager, SSM, Logs, KMS) + S3 gateway endpoint. Removes NAT bandwidth for AWS service traffic, speeds up Fargate cold starts. ~$84/mo (6 interface endpoints × 2 AZs ≈ ~$7/mo each, plus per-GB data processing; the S3 gateway endpoint is free). |
 
 ---
 
@@ -33,6 +33,7 @@ behavior unless noted; the production install changes the ones flagged
 | `PreferredBackupWindow` | `07:00-08:00` | UTC backup window. Pick a low-traffic slot. |
 | `PreferredMaintenanceWindow` | `sun:09:00-sun:10:00` | UTC weekly maintenance window. |
 | `KmsKeyArn` | `''` | **prod-only**: BYOK CMK ARN for cluster storage encryption. Empty = AWS-managed `alias/aws/rds`. |
+| `DeletionProtection` | `'false'` | **prod-only**: set `'true'` to refuse cluster deletion until the protection is explicitly turned off. Default `'false'` keeps the smoke teardown clean; set `'true'` for prod. Teardown then needs an extra `aws docdb modify-db-cluster --no-deletion-protection` step before the stack delete. |
 
 Outputs: `DocDbClusterArn`, `DocDbEndpoint`, `DocDbReaderEndpoint`, `DocDbPort`, `DocDbSecurityGroupId`.
 

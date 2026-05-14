@@ -86,6 +86,18 @@ Parameters:
       Empty (default) = AWS-managed key (alias/aws/rds). Required for
       compliance frameworks that need BYOK.
 
+  DeletionProtection:
+    Type: String
+    Default: 'false'
+    AllowedValues: [ 'true', 'false' ]
+    Description: >
+      When 'true', the DocumentDB cluster cannot be deleted by either
+      CloudFormation stack delete or the DocDB API until the protection
+      is explicitly turned off. Default 'false' (smoke-friendly — lets
+      teardown.md complete cleanly). Production should set 'true'; the
+      teardown procedure then has an extra step (modify the cluster to
+      DeletionProtection=false before deleting the stack).
+
 Conditions:
   HasCustomKmsKeyCond: !Not [ !Equals [ !Ref KmsKeyArn, '' ] ]
   HasReplica1Cond: !Or [ !Equals [ !Ref InstanceCount, 2 ], !Equals [ !Ref InstanceCount, 3 ] ]
@@ -127,7 +139,7 @@ Resources:
       PreferredBackupWindow: !Ref PreferredBackupWindow
       PreferredMaintenanceWindow: !Ref PreferredMaintenanceWindow
       EnableCloudwatchLogsExports: [ audit, profiler ]
-      DeletionProtection: false  # set true via console for prod clusters
+      DeletionProtection: !Ref DeletionProtection
 
   InstancePrimary:
     Type: AWS::DocDB::DBInstance
