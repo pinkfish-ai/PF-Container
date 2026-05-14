@@ -64,8 +64,8 @@ real workloads.
 5. Skip the SG wire-up step in your install doc's "Deploy ECS"
    section — Atlas isn't in your VPC, so there's no SG to authorize.
 
-The §7 install otherwise looks identical: same `pinkconnect-ecs.yaml`,
-same SSM secrets, same everything.
+The install otherwise looks identical: same `pinkconnect-ecs.yaml`,
+same SSM secrets, same flow as `install-smoke.md` / `install-production.md`.
 
 ### Self-managed MongoDB
 

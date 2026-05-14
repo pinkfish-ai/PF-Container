@@ -4,8 +4,8 @@ Description: >
   single db.t4g.medium for cheap smoke deploys; set InstanceCount to 2
   or 3 (+ a larger InstanceClass) for production multi-AZ topology.
   After the ecs stack is deployed, authorize the ECS task SG as ingress
-  on DocDbSecurityGroupId port 27017 (one-time CLI command — see
-  claude-setup.md § 7).
+  on DocDbSecurityGroupId port 27017 (one-time CLI command — see the
+  "Deploy ECS" section of install-smoke.md or install-production.md).
 
 Parameters:
   EnvironmentName:

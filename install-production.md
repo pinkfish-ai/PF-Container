@@ -373,15 +373,25 @@ RP_ARN=$(aws backup describe-backup-job --backup-job-id "$BACKUP_JOB_ID" \
           --region "$AWS_REGION" --profile "$AWS_PROFILE" \
           --query RecoveryPointArn --output text)
 
-# Copy it cross-region
-aws backup start-copy-job \
+# Copy it cross-region — async; capture the CopyJobId so we can poll.
+COPY_JOB_ID=$(aws backup start-copy-job \
   --recovery-point-arn "$RP_ARN" \
   --source-backup-vault-name "$BACKUP_VAULT_NAME" \
   --destination-backup-vault-arn "$DEST_BACKUP_VAULT_ARN" \
   --iam-role-arn "$BACKUP_ROLE_ARN" \
-  --region "$AWS_REGION" --profile "$AWS_PROFILE"
+  --region "$AWS_REGION" --profile "$AWS_PROFILE" \
+  --query CopyJobId --output text)
 
-# Verify the destination vault sees the copied recovery point
+echo "Copy job: $COPY_JOB_ID — waiting for completion..."
+
+# Poll until COMPLETED (or fail loudly on terminal failure states).
+until STATE=$(aws backup describe-copy-job --copy-job-id "$COPY_JOB_ID" \
+                --region "$AWS_REGION" --profile "$AWS_PROFILE" \
+                --query 'CopyJob.State' --output text) && \
+      [[ "$STATE" =~ ^(COMPLETED|FAILED|PARTIAL)$ ]]; do sleep 30; done
+test "$STATE" = "COMPLETED" || { echo "Copy job ended in $STATE — check console"; exit 1; }
+
+# Now verify the destination vault actually sees the copied recovery point.
 DEST_VAULT_NAME=$(echo "$DEST_BACKUP_VAULT_ARN" | awk -F: '{print $NF}' | awk -F/ '{print $NF}')
 DEST_REGION=$(echo "$DEST_BACKUP_VAULT_ARN" | awk -F: '{print $4}')
 
