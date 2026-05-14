@@ -69,7 +69,8 @@ Same shape for smoke and production; production adds two extra stacks
 | 2 | Create ECR, load + push image | 2 min | yes — with §3 |
 | 3 | Deploy networking stack | 3–5 min | yes |
 | 4 | Deploy DocumentDB stack | 8–12 min | starts after §3, runs alongside §5–6 |
-| 5 | Generate JWT keypair, populate SSM | 1 min | runs alongside §4 |
+| 5a | Generate JWT keypair (`npm run keygen`) | 30 sec | runs alongside §4 |
+| 5b | Populate SSM — including `mongodb-uri` | 1 min | **blocked on §4** (needs `DocDbEndpoint` to build `MONGO_URI`) |
 | 6 | Request ACM cert, insert DNS validation CNAME | 2 min | runs alongside §4 |
 | 7 | Deploy ECS stack with mid-deploy SG wire-up | 8 min | requires §3–6 done |
 | 7b *(prod only)* | Deploy CDN stack | 10 min (CloudFront propagation) | requires §7 |
@@ -86,7 +87,8 @@ Same shape for smoke and production; production adds two extra stacks
 | 2 | `aws ecr describe-images --repository-name pinkconnect` lists the pushed tag |
 | 3 | Stack status `CREATE_COMPLETE`; 5 outputs (`VpcId` + 4 subnet IDs) |
 | 4 | Stack status `CREATE_COMPLETE`; `DocDbEndpoint`, `DocDbSecurityGroupId`, `DocDbClusterArn` outputs |
-| 5 | 5 SSM parameters under the `SsmPrefix` exist |
+| 5a | `keys/private.pem` + `keys/public.pem` exist in the admin app directory |
+| 5b | 5 SSM parameters under the `SsmPrefix` exist (including `mongodb-uri`) |
 | 6 | `aws acm describe-certificate` returns `Status: ISSUED` |
 | 7 | Stack status `CREATE_COMPLETE`; `TaskSecurityGroupId` output |
 | 7b | Stack status `CREATE_COMPLETE`; `curl -sI https://<host>/health/ready` returns `Via: ... .cloudfront.net` header |
