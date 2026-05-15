@@ -314,6 +314,148 @@ curl "http://localhost:3000/api/proxy/openweather/${CONN_ID}/data/2.5/weather?la
 
 ---
 
+## 9. Optional — Deploy MCPfarm
+
+MCPfarm is the Pinkfish MCP server packaged as a container. It runs in
+the same VPC as PinkConnect, talks ONLY to your PinkConnect ALB for
+credentialed upstream calls, and serves the same `/dynamic/<id>` route
+Pinkfish prod uses — so any MCP client can call it without knowing
+whether it's hitting Pinkfish or your self-host. This step is optional;
+skip it if you only need the PinkConnect auth layer.
+
+### 9.1 Push the MCPfarm image to your ECR
+
+The MCPfarm image is shipped from Pinkfish as a tarball, the same way
+PinkConnect's image was (see §2). Replace the tag with the version
+Pinkfish sent you:
+
+```bash
+MCP_TAG=v0.1.0
+MCP_REPO=mcpfarm
+MCP_ECR_URI="${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${MCP_REPO}"
+
+aws ecr create-repository --repository-name "$MCP_REPO" \
+  --region "$AWS_REGION" --profile "$AWS_PROFILE" 2>/dev/null || true
+docker load -i "mcpfarm-${MCP_TAG}.tar.gz"
+docker tag "pinkfish-ai/mcpfarm:${MCP_TAG}" "${MCP_ECR_URI}:${MCP_TAG}"
+docker push "${MCP_ECR_URI}:${MCP_TAG}"
+```
+
+### 9.2 Cert for the MCPfarm hostname
+
+If your `CustomDomainName` cert from §5 is a wildcard (`*.example.com`)
+it already covers `mcp.example.com` — skip this step. Otherwise, request
+a second cert covering `mcp.example.com` exactly as you did in §5, add
+the DNS-validation CNAME, and capture the new `MCP_CERT_ARN`.
+
+### 9.3 (One-time) Verify the JWT + Upstash params are present
+
+MCPfarm reads its secrets from the same `/pinkconnect/*` SSM namespace
+PinkConnect uses. The smoke install populated `/pinkconnect/jwt-public-key`
+in §4. If you did NOT enable usage tracking on PinkConnect, you also
+need to add the Upstash creds now:
+
+```bash
+# Sign up for a free Upstash Redis instance at https://upstash.com
+# (Free tier covers smoke-scale traffic; ~2 min to create.)
+aws ssm put-parameter \
+  --region "$AWS_REGION" --profile "$AWS_PROFILE" \
+  --name /pinkconnect/upstash-ratelimit-redis-url \
+  --type SecureString --overwrite --value '<your-rest-url>'
+aws ssm put-parameter \
+  --region "$AWS_REGION" --profile "$AWS_PROFILE" \
+  --name /pinkconnect/upstash-ratelimit-redis-token \
+  --type SecureString --overwrite --value '<your-rest-token>'
+```
+
+### 9.4 Deploy `mcpfarm-ecs.yaml`
+
+```bash
+# CONNECT_URL is the customer-facing URL of YOUR PinkConnect (the
+# PublicUrl Output of the pinkconnect-ecs stack from §6).
+PINKCONNECT_URL=$(aws cloudformation describe-stacks \
+  --stack-name pinkconnect-ecs \
+  --region "$AWS_REGION" --profile "$AWS_PROFILE" \
+  --query "Stacks[0].Outputs[?OutputKey=='PublicUrl'].OutputValue" \
+  --output text)
+
+MCP_HOST=mcp.example.com           # Edit
+MCP_CERT_ARN=arn:aws:acm:...       # From §5 wildcard OR §9.2
+
+aws cloudformation deploy \
+  --stack-name mcpfarm-ecs \
+  --region "$AWS_REGION" --profile "$AWS_PROFILE" \
+  --template-file cloudformation/mcpfarm-ecs.yaml \
+  --capabilities CAPABILITY_NAMED_IAM \
+  --parameter-overrides \
+    VpcId="$VPC_ID" \
+    PublicSubnetAId="$PUB_A" \
+    PublicSubnetBId="$PUB_B" \
+    PrivateSubnetAId="$PRIV_A" \
+    PrivateSubnetBId="$PRIV_B" \
+    ContainerImage="${MCP_ECR_URI}:${MCP_TAG}" \
+    ConnectUrl="$PINKCONNECT_URL" \
+    CustomDomainName="$MCP_HOST" \
+    Route53HostedZoneId="$HOSTED_ZONE_ID" \
+    CertificateArn="$MCP_CERT_ARN"
+```
+
+### 9.5 Smoke-test the dispatch path
+
+You already created an OpenWeather connection in §8. The MCP server
+calls back to PinkConnect (via `CONNECT_URL`) to fetch the stored
+credential, then makes the upstream call to api.openweathermap.org.
+
+```bash
+# Sign a JWT against the keypair PinkConnect uses (public half lives
+# at /pinkconnect/jwt-public-key, populated in §4). The platform
+# verifier accepts only RS256, and the auth middleware requires the
+# `pfAcct` and `selectedOrg` claims in addition to standard `sub` +
+# `exp`. Use the private key generated in §4 to sign with RS256 and
+# include those claims, e.g.:
+#
+#   payload = { sub: '<user>', pfAcct: '<acct>', selectedOrg: '<org>',
+#               exp: now + 3600 }
+#   header  = { alg: 'RS256', kid: '<the kid baked into JWT_PUBLIC_KEY>' }
+#
+# Any JWT issuer in your environment that can sign RS256 with the
+# matching private key works; the smoke does not require a specific
+# issuer.
+JWT='<your-test-jwt>'
+PCID='<connection_id from §8>'   # the OpenWeather connection
+
+# The Accept header is REQUIRED by the MCP HTTP transport — without it
+# the server returns `{"jsonrpc":"2.0","error":{"code":-32000,"message":
+# "Not Acceptable: Client must accept application/json"}}`. The MCP
+# spec mandates both `application/json` and `text/event-stream`.
+curl -sS -X POST "https://${MCP_HOST}/dynamic/openweather" \
+  -H "Authorization: Bearer ${JWT}" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+      "name": "openweather_get_current_weather",
+      "arguments": { "PCID": "'"$PCID"'", "lat": 51.5074, "lon": -0.1278 }
+    }
+  }'
+# → JSON-RPC result with real OpenWeather data for London.
+```
+
+That single curl proves:
+
+- ✅ MCPfarm container is deployed and reachable in your AWS
+- ✅ JWT auth works at the MCP layer (verified against PinkConnect's signing key)
+- ✅ Rate-limit middleware is in front (Upstash-backed)
+- ✅ MCPfarm dispatches the call through YOUR PinkConnect via `CONNECT_URL`
+- ✅ PinkConnect injects YOUR stored OpenWeather credential
+- ✅ Real vendor API returns data
+- ✅ Response flows back up the chain — **zero Pinkfish-hosted services in the path**.
+
+---
+
 ## What's missing vs. production
 
 If you're going to leave this deployment running for real traffic,

@@ -26,6 +26,14 @@ Smoke uses default stack names (`pinkconnect-*`) and SSM prefix
 are production-only).
 
 ```bash
+# Optional MCPfarm stack first — has to go before pinkconnect-ecs
+# because its ConnectUrl is set against PinkConnect's ALB and the SG
+# pair would otherwise prevent clean teardown.
+aws cloudformation delete-stack --stack-name mcpfarm-ecs \
+  --region "$AWS_REGION" --profile "$AWS_PROFILE" 2>/dev/null || true
+aws cloudformation wait stack-delete-complete --stack-name mcpfarm-ecs \
+  --region "$AWS_REGION" --profile "$AWS_PROFILE" 2>/dev/null || true
+
 # Revoke the manually-added docdb→task SG ingress rule before deleting
 # the ECS stack. The install authorized this rule outside CFN, so CFN
 # doesn't know to clean it up, and the ECS stack delete will hang

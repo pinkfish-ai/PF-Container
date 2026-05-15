@@ -1,21 +1,31 @@
-# PinkConnect — Self-Host (Claude orchestrator entry)
+# PinkConnect + MCPfarm — Self-Host (Claude orchestrator entry)
 
-You (Claude) are about to install PinkConnect into a customer's AWS
-account. This file is the orchestrator entry — it tells you how to
-behave and which other file to drive the install from. The human
-approves AWS prompts and pastes credentials when asked; you run the
-commands, watch outputs, and recover from errors.
+You (Claude) are about to install **PinkConnect + MCPfarm** into a
+customer's AWS account. This file is the orchestrator entry — it tells
+you how to behave and which other files to drive the install from.
+The human approves AWS prompts and pastes credentials when asked; you
+run the commands, watch outputs, and recover from errors.
+
+**Default flow installs both:** PinkConnect provides the credential /
+proxy layer for vendor APIs (Gmail, OpenWeather, Slack, ~50 others);
+MCPfarm provides the MCP server surface that exposes ~300 tools to
+callers and routes through PinkConnect for credentials. Customers who
+only want the connection-proxy layer can stop after PinkConnect —
+explicitly opt out at install time when you ask. Customers who want
+MCPfarm always need PinkConnect first; MCPfarm's `CONNECT_URL`
+parameter points at PinkConnect's ALB.
 
 If a human is reading this directly: the human-facing overview is in
-[`README.md`](./README.md). The actual step-by-step install runbooks
-are [`install-smoke.md`](./install-smoke.md) and
-[`install-production.md`](./install-production.md) — pick one.
+[`README.md`](./README.md). The step-by-step install runbooks are
+[`install-smoke.md`](./install-smoke.md) and
+[`install-production.md`](./install-production.md). PinkConnect lives
+in §1–§8 of each runbook; MCPfarm lives in §9.
 
 ---
 
 ## For Claude — orchestration rules
 
-### 1. Ask the human four things up front
+### 1. Ask the human five things up front
 
 1. **AWS profile name and account ID.** Verify with
    `aws sts get-caller-identity --profile <name>` before doing
@@ -23,11 +33,17 @@ are [`install-smoke.md`](./install-smoke.md) and
 2. **Region.** Default `us-east-1`; ARM64 Fargate is supported in all
    common regions but confirm.
 3. **Domain.** Must already exist as a Route53 hosted zone in this
-   account. Ask which subdomain PinkConnect should live on (e.g.
-   `connect.example.com` for smoke, `prod.example.com` for production).
+   account. Ask which subdomain **PinkConnect** should live on (e.g.
+   `connect.example.com` for smoke, `prod.example.com` for production)
+   AND which subdomain **MCPfarm** should live on (e.g. `mcp.example.com`).
+   They must be different hostnames in the same hosted zone.
 4. **Profile: smoke or production?** See the table below. Don't guess
    — the answer changes which install doc you follow, what
    prerequisites the human needs ready.
+5. **Include MCPfarm?** Default yes. Ask: "Do you want the MCP server
+   layer (MCPfarm) on top of PinkConnect, or just PinkConnect alone?"
+   If they say PinkConnect-only, skip phases 10a–10d below. If they
+   say both (default), drive the full flow.
 
 ### 2. Decide which install doc to follow
 
@@ -40,15 +56,23 @@ Drive the install end-to-end from whichever install doc the human
 picked. The doc is self-contained — you don't need to merge content
 from multiple files.
 
-### 3. Confirm both binary artifacts are on disk
+### 3. Confirm binary artifacts are on disk
+
+For PinkConnect (always required):
 
 ```bash
 ls pinkconnect-*.tar.gz pinkfish-connections-admin-app-main.zip
 ```
 
-Both must exist. If either is missing, **stop** and tell the human to
-get them from Pinkfish — you can't conjure them, and the install
-can't proceed without both.
+For MCPfarm (required when phase 5 answer was "include MCPfarm"):
+
+```bash
+ls mcp-server-ecs-*.tar.gz
+```
+
+All required artifacts must exist. If any are missing, **stop** and
+tell the human to get them from Pinkfish — you can't conjure them,
+and the install can't proceed without them.
 
 ### 4. Read these before deploying
 
@@ -76,8 +100,13 @@ Same shape for smoke and production; production adds two extra stacks
 | 7b *(prod only)* | Deploy CDN stack | 10 min (CloudFront propagation) | requires §7 |
 | 7c *(prod only)* | Deploy backup stack | 1 min | requires §3, §4 done |
 | 8 | Verify `/health/ready` | <1 min | requires §7 (and §7b for prod, since prod's `$HOST` resolves through CloudFront) |
-| 9 | Deploy openweather + create connection + proxy call | 1 min | requires §8 |
-| 10 *(prod only)* | Validate cross-region backup copy via on-demand `start-copy-job` | 5 min | requires §7c |
+| 9 | Deploy openweather + create connection + proxy call (PinkConnect smoke) | 1 min | requires §8 |
+| 10a *(MCPfarm)* | Push MCPfarm image to ECR | 2 min | requires §2's ECR + §9 |
+| 10b *(MCPfarm)* | ACM cert for MCPfarm hostname | 2 min | runs alongside 10a |
+| 10c *(MCPfarm)* | Verify JWT + Upstash SSM params (shared with PinkConnect) | <1 min | requires §5b |
+| 10d *(MCPfarm)* | Deploy `mcpfarm-ecs.yaml` pointing at PinkConnect ALB | 6–8 min | requires 10a, 10b, 10c |
+| 10e *(MCPfarm)* | Dispatch smoke — JWT → `/dynamic/openweather` → real weather JSON | 1 min | requires 10d |
+| 11 *(prod only)* | Validate cross-region backup copy via on-demand `start-copy-job` | 5 min | requires §7c |
 
 ### 6. Success criteria per phase (verify, don't ask the human)
 
@@ -95,7 +124,12 @@ Same shape for smoke and production; production adds two extra stacks
 | 7c | Stack status `CREATE_COMPLETE`; `BackupRoleArn` + `BackupVaultName` outputs |
 | 8 | `curl https://<host>/health/ready` returns `200 {"status":"ready"}` |
 | 9 | Proxy call through PinkConnect returns real upstream data |
-| 10 | `aws backup list-recovery-points-by-backup-vault --region <dest-region>` shows the copied recovery point |
+| 10a | `aws ecr describe-images --repository-name pinkfish-mcp-server` lists the pushed tag |
+| 10b | `aws acm describe-certificate` for the MCPfarm hostname returns `Status: ISSUED` |
+| 10c | `aws ssm get-parameter` returns `jwt-public-key`, `upstash-ratelimit-redis-url`, `upstash-ratelimit-redis-token` under the shared `/pinkconnect/*` prefix |
+| 10d | Stack `mcpfarm-ecs` status `CREATE_COMPLETE`; `curl https://<mcpfarm-host>/health` returns 200 |
+| 10e | `curl -X POST https://<mcpfarm-host>/dynamic/openweather -H "Authorization: Bearer <jwt>" -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"weather_get_current","arguments":{"lat":51.5074,"lon":-0.1278}}}'` returns real OpenWeather JSON |
+| 11 | `aws backup list-recovery-points-by-backup-vault --region <dest-region>` shows the copied recovery point |
 
 ### 7. When something breaks
 
