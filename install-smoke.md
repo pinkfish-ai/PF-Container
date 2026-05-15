@@ -332,9 +332,10 @@ Pinkfish sent you:
 ```bash
 MCP_TAG=v0.1.0
 MCP_REPO=mcpfarm
-MCP_ECR_URI="${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/${MCP_REPO}"
+MCP_ECR_URI="${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${MCP_REPO}"
 
-aws ecr create-repository --repository-name "$MCP_REPO" --region "$REGION" 2>/dev/null || true
+aws ecr create-repository --repository-name "$MCP_REPO" \
+  --region "$AWS_REGION" --profile "$AWS_PROFILE" 2>/dev/null || true
 docker load -i "mcpfarm-${MCP_TAG}.tar.gz"
 docker tag "pinkfish-ai/mcpfarm:${MCP_TAG}" "${MCP_ECR_URI}:${MCP_TAG}"
 docker push "${MCP_ECR_URI}:${MCP_TAG}"
@@ -368,26 +369,28 @@ aws ssm put-parameter --name /pinkconnect/upstash-ratelimit-redis-token --type S
 # PublicUrl Output of the pinkconnect-ecs stack from §6).
 PINKCONNECT_URL=$(aws cloudformation describe-stacks \
   --stack-name pinkconnect-ecs \
+  --region "$AWS_REGION" --profile "$AWS_PROFILE" \
   --query "Stacks[0].Outputs[?OutputKey=='PublicUrl'].OutputValue" \
   --output text)
 
-MCP_HOST=mcp.example.com   # Edit
-MCP_CERT_ARN=arn:aws:acm:...   # From §5 wildcard OR §9.2
+MCP_HOST=mcp.example.com           # Edit
+MCP_CERT_ARN=arn:aws:acm:...       # From §5 wildcard OR §9.2
 
 aws cloudformation deploy \
   --stack-name mcpfarm-ecs \
+  --region "$AWS_REGION" --profile "$AWS_PROFILE" \
   --template-file cloudformation/mcpfarm-ecs.yaml \
   --capabilities CAPABILITY_NAMED_IAM \
   --parameter-overrides \
     VpcId="$VPC_ID" \
-    PublicSubnetAId="$PUBLIC_A" \
-    PublicSubnetBId="$PUBLIC_B" \
-    PrivateSubnetAId="$PRIVATE_A" \
-    PrivateSubnetBId="$PRIVATE_B" \
+    PublicSubnetAId="$PUB_A" \
+    PublicSubnetBId="$PUB_B" \
+    PrivateSubnetAId="$PRIV_A" \
+    PrivateSubnetBId="$PRIV_B" \
     ContainerImage="${MCP_ECR_URI}:${MCP_TAG}" \
     ConnectUrl="$PINKCONNECT_URL" \
     CustomDomainName="$MCP_HOST" \
-    Route53HostedZoneId="$ZONE_ID" \
+    Route53HostedZoneId="$HOSTED_ZONE_ID" \
     CertificateArn="$MCP_CERT_ARN"
 ```
 

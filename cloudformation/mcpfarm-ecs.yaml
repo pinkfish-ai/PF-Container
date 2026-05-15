@@ -90,11 +90,23 @@ Parameters:
 
   HealthCheckPath:
     Type: String
-    Default: /health
+    Default: /
     Description: >
-      ALB health-check path. The Pinkfish MCP image exposes /health for
-      ECS readiness probes. Override only if a custom image surfaces
-      readiness at a different path.
+      ALB health-check path. The Pinkfish MCP image does not currently
+      expose a dedicated readiness endpoint, so the default probes `/`
+      and the `HealthCheckMatcher` is permissive (any non-5xx counts as
+      healthy). Override both this parameter and `HealthCheckMatcher`
+      together if a custom image surfaces a real readiness endpoint.
+
+  HealthCheckMatcher:
+    Type: String
+    Default: '200-499'
+    Description: >
+      HTTP codes that mark the target healthy. Default `200-499` lets
+      the catch-all route's natural 404 / unauthorized responses count
+      as "container is alive" without requiring a dedicated /health
+      endpoint in the image. Switch to `200` only when paired with a
+      real readiness path.
 
   # ---- Hardening flags (mirror of pinkconnect-ecs.yaml) ----
   InternalAlb:
@@ -218,7 +230,7 @@ Resources:
       HealthCheckTimeoutSeconds: 10
       HealthyThresholdCount: 2
       UnhealthyThresholdCount: 5
-      Matcher: { HttpCode: '200' }
+      Matcher: { HttpCode: !Ref HealthCheckMatcher }
       TargetGroupAttributes:
         - { Key: deregistration_delay.timeout_seconds, Value: '30' }
 
