@@ -358,8 +358,14 @@ need to add the Upstash creds now:
 ```bash
 # Sign up for a free Upstash Redis instance at https://upstash.com
 # (Free tier covers smoke-scale traffic; ~2 min to create.)
-aws ssm put-parameter --name /pinkconnect/upstash-ratelimit-redis-url   --type SecureString --overwrite --value '<your-rest-url>'
-aws ssm put-parameter --name /pinkconnect/upstash-ratelimit-redis-token --type SecureString --overwrite --value '<your-rest-token>'
+aws ssm put-parameter \
+  --region "$AWS_REGION" --profile "$AWS_PROFILE" \
+  --name /pinkconnect/upstash-ratelimit-redis-url \
+  --type SecureString --overwrite --value '<your-rest-url>'
+aws ssm put-parameter \
+  --region "$AWS_REGION" --profile "$AWS_PROFILE" \
+  --name /pinkconnect/upstash-ratelimit-redis-token \
+  --type SecureString --overwrite --value '<your-rest-token>'
 ```
 
 ### 9.4 Deploy `mcpfarm-ecs.yaml`
