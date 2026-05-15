@@ -401,10 +401,20 @@ calls back to PinkConnect (via `CONNECT_URL`) to fetch the stored
 credential, then makes the upstream call to api.openweathermap.org.
 
 ```bash
-# Sign a JWT against the same keypair PinkConnect uses (the public
-# half lives in /pinkconnect/jwt-public-key from §4). For the smoke,
-# any HS256/RS256 JWT with the right kid and an expiry in the future
-# is fine — wire it up however your environment already issues JWTs.
+# Sign a JWT against the keypair PinkConnect uses (public half lives
+# at /pinkconnect/jwt-public-key, populated in §4). The platform
+# verifier accepts only RS256, and the auth middleware requires the
+# `pfAcct` and `selectedOrg` claims in addition to standard `sub` +
+# `exp`. Use the private key generated in §4 to sign with RS256 and
+# include those claims, e.g.:
+#
+#   payload = { sub: '<user>', pfAcct: '<acct>', selectedOrg: '<org>',
+#               exp: now + 3600 }
+#   header  = { alg: 'RS256', kid: '<the kid baked into JWT_PUBLIC_KEY>' }
+#
+# Any JWT issuer in your environment that can sign RS256 with the
+# matching private key works; the smoke does not require a specific
+# issuer.
 JWT='<your-test-jwt>'
 PCID='<connection_id from §8>'   # the OpenWeather connection
 

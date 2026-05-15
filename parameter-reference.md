@@ -124,7 +124,8 @@ reference the PinkConnect ALB.
 | `DesiredCount` / `MaxCount` | `1` / `5` | Task count knobs. Default 1 is smoke-only; bump to 2+ for production. |
 | `TaskCpu` / `TaskMemory` | `1024` / `2048` | Fargate sizing per task. |
 | `ContainerPort` | `3020` | Port the MCP server listens on inside the container. Override only for a custom-baked image. |
-| `HealthCheckPath` | `/health` | ALB target health-check path. |
+| `HealthCheckPath` | `/` | ALB target health-check path. The Pinkfish MCP image does not currently surface a dedicated readiness endpoint, so the default probes `/` and pairs with a permissive `HealthCheckMatcher`. Override **both** parameters together if a custom image exposes a real readiness path. |
+| `HealthCheckMatcher` | `200-499` | HTTP status codes that mark the target healthy. The default accepts any non-5xx response so the catch-all route's natural 404 / unauthorized responses count as "container is alive" without requiring an in-image `/health` endpoint. Tighten to `200` only when paired with a real readiness path. |
 | `InternalAlb` / `KmsKeyArn` / `LogRetentionDays` / `WebAclArn` / `CreateDnsRecord` | `false` / `''` / `90` / `''` / `true` | Standard hardening flags, same shape as `pinkconnect-ecs.yaml`. |
 
 Outputs: `AlbDnsName`, `PublicUrl`, `ClusterName`, `ServiceName`, `TaskSecurityGroupId`.
