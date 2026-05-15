@@ -424,9 +424,14 @@ credential, then makes the upstream call to api.openweathermap.org.
 JWT='<your-test-jwt>'
 PCID='<connection_id from §8>'   # the OpenWeather connection
 
+# The Accept header is REQUIRED by the MCP HTTP transport — without it
+# the server returns `{"jsonrpc":"2.0","error":{"code":-32000,"message":
+# "Not Acceptable: Client must accept application/json"}}`. The MCP
+# spec mandates both `application/json` and `text/event-stream`.
 curl -sS -X POST "https://${MCP_HOST}/dynamic/openweather" \
   -H "Authorization: Bearer ${JWT}" \
   -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
   -d '{
     "jsonrpc": "2.0",
     "id": 1,
