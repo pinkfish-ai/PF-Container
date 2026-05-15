@@ -97,3 +97,34 @@ Outputs: `DistributionId`, `DistributionDomainName`, `PublicUrl`.
 | `DestinationBackupVaultArn` | `''` | Empty = single-region backups. Set to a vault ARN in a different region (customer pre-creates) to enable cross-region copy via the plan's `CopyAction`. |
 
 Outputs: `BackupVaultName`, `BackupVaultArn`, `BackupRoleArn`, `BackupPlanId`.
+
+---
+
+## `cloudformation/mcpfarm-ecs.yaml` (optional)
+
+MCPfarm is the Pinkfish MCP server packaged as its own ECS service.
+Sits alongside PinkConnect — shares the same VPC and the same
+`/pinkconnect/*` SSM namespace for JWT signing + Upstash creds —
+and serves the existing `/dynamic/<id>` MCP route, but loads tool
+definitions from the baked-in `mcp-server-definitions/` filesystem
+catalog instead of fetching them from a DDB-backed Go API. Deploy it
+after `pinkconnect-ecs.yaml` so its `ConnectUrl` parameter can
+reference the PinkConnect ALB.
+
+| Parameter | Default | Notes |
+|---|---|---|
+| `EnvironmentName` | `mcpfarm` | Stack-wide name prefix (cluster, service, role, log group, SG, etc.). |
+| `VpcId` / `PublicSubnetAId` / `PublicSubnetBId` / `PrivateSubnetAId` / `PrivateSubnetBId` | required | From the `pinkconnect-networking` stack outputs — MCPfarm shares the same VPC as PinkConnect. |
+| `ContainerImage` | required | ECR image URI for the Pinkfish MCP server image (arm64 only). |
+| `ConnectUrl` | required | Customer's PinkConnect base URL (the PinkConnect ALB's PublicUrl). Tool handlers POST credentialed upstream calls through this URL. **No Pinkfish-hosted endpoints permitted.** |
+| `CustomDomainName` | required | DNS name for the MCPfarm ALB (e.g. `mcp.example.com`). Must be covered by `CertificateArn`. |
+| `Route53HostedZoneId` | required | Hosted zone holding `CustomDomainName`. |
+| `CertificateArn` | required | ACM cert in the ALB region covering `CustomDomainName`. A wildcard from the PinkConnect install works. |
+| `SsmPrefix` | `/pinkconnect` | SSM namespace for shared secrets (`jwt-public-key`, `upstash-ratelimit-redis-url`, `upstash-ratelimit-redis-token`). Defaults to PinkConnect's namespace because those are shared operational secrets; override only if you want a separate namespace. |
+| `DesiredCount` / `MaxCount` | `1` / `5` | Task count knobs. Default 1 is smoke-only; bump to 2+ for production. |
+| `TaskCpu` / `TaskMemory` | `1024` / `2048` | Fargate sizing per task. |
+| `ContainerPort` | `3020` | Port the MCP server listens on inside the container. Override only for a custom-baked image. |
+| `HealthCheckPath` | `/health` | ALB target health-check path. |
+| `InternalAlb` / `KmsKeyArn` / `LogRetentionDays` / `WebAclArn` / `CreateDnsRecord` | `false` / `''` / `90` / `''` / `true` | Standard hardening flags, same shape as `pinkconnect-ecs.yaml`. |
+
+Outputs: `AlbDnsName`, `PublicUrl`, `ClusterName`, `ServiceName`, `TaskSecurityGroupId`.
