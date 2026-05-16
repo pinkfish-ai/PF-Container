@@ -330,7 +330,10 @@ PinkConnect's image was (see §2). Replace the tag with the version
 Pinkfish sent you:
 
 ```bash
-MCP_TAG=v0.1.0
+# Match the tag in the tarball filename — bundle v0.2.0 ships
+# mcpfarm-v0.2.0.tar.gz. Check VERSION + RELEASE-NOTES.md in this
+# directory for the current bundle's component versions.
+MCP_TAG=v0.2.0
 MCP_REPO=mcpfarm
 MCP_ECR_URI="${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${MCP_REPO}"
 
@@ -407,21 +410,16 @@ calls back to PinkConnect (via `CONNECT_URL`) to fetch the stored
 credential, then makes the upstream call to api.openweathermap.org.
 
 ```bash
-# Sign a JWT against the keypair PinkConnect uses (public half lives
-# at /pinkconnect/jwt-public-key, populated in §4). The platform
-# verifier accepts only RS256, and the auth middleware requires the
-# `pfAcct` and `selectedOrg` claims in addition to standard `sub` +
-# `exp`. Use the private key generated in §4 to sign with RS256 and
-# include those claims, e.g.:
-#
-#   payload = { sub: '<user>', pfAcct: '<acct>', selectedOrg: '<org>',
-#               exp: now + 3600 }
-#   header  = { alg: 'RS256', kid: '<the kid baked into JWT_PUBLIC_KEY>' }
-#
-# Any JWT issuer in your environment that can sign RS256 with the
-# matching private key works; the smoke does not require a specific
-# issuer.
-JWT='<your-test-jwt>'
+# The admin app you started in §8 already mints JWTs signed against the
+# keypair you generated — grab one from its debug endpoint:
+JWT=$(curl -s http://localhost:3000/api/debug/jwt | jq -r .token)
+
+# (The token is RS256-signed with the private key in keys/private.pem,
+# carries the providerId + selectedOrg claims from .env, and is verified
+# by MCPfarm against /pinkconnect/jwt-public-key. If you want to sign
+# JWTs from your own application instead, see the JWT signing notes in
+# gotchas.md — the smoke doesn't require a specific issuer.)
+
 PCID='<connection_id from §8>'   # the OpenWeather connection
 
 # The Accept header is REQUIRED by the MCP HTTP transport — without it

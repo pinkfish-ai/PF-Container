@@ -64,12 +64,17 @@ aws cloudformation wait stack-delete-complete --stack-name pinkconnect-docdb \
 aws cloudformation delete-stack --stack-name pinkconnect-networking \
   --region "$AWS_REGION" --profile "$AWS_PROFILE"
 
-# SSM params under /pinkconnect/.
-aws ssm delete-parameters --region "$AWS_REGION" --profile "$AWS_PROFILE" \
-  --names $(aws ssm describe-parameters \
-              --parameter-filters "Key=Name,Option=BeginsWith,Values=/pinkconnect/" \
-              --query 'Parameters[].Name' --output text \
-              --region "$AWS_REGION" --profile "$AWS_PROFILE")
+# SSM params under /pinkconnect/. `aws ... --output text` joins names
+# with tabs, which doesn't word-split through the unquoted expansion
+# `aws ssm delete-parameters` expects — pass them one-at-a-time via
+# xargs after normalizing to newlines.
+aws ssm describe-parameters \
+    --parameter-filters "Key=Name,Option=BeginsWith,Values=/pinkconnect/" \
+    --query 'Parameters[].Name' --output text \
+    --region "$AWS_REGION" --profile "$AWS_PROFILE" \
+  | tr '\t' '\n' \
+  | xargs -n1 -I{} aws ssm delete-parameter --name {} \
+      --region "$AWS_REGION" --profile "$AWS_PROFILE"
 
 # Per-connection secrets under pinkconnect/.
 aws secretsmanager list-secrets --region "$AWS_REGION" --profile "$AWS_PROFILE" \
@@ -140,12 +145,16 @@ aws cloudformation wait stack-delete-complete --stack-name pinkconnect-docdb-pro
 aws cloudformation delete-stack --stack-name pinkconnect-networking-prod \
   --region "$AWS_REGION" --profile "$AWS_PROFILE"
 
-# SSM params under /pinkconnect-prod/.
-aws ssm delete-parameters --region "$AWS_REGION" --profile "$AWS_PROFILE" \
-  --names $(aws ssm describe-parameters \
-              --parameter-filters "Key=Name,Option=BeginsWith,Values=/pinkconnect-prod/" \
-              --query 'Parameters[].Name' --output text \
-              --region "$AWS_REGION" --profile "$AWS_PROFILE")
+# SSM params under /pinkconnect-prod/. See note on the smoke section
+# above — tab-separated output doesn't word-split through unquoted
+# expansion. Use xargs.
+aws ssm describe-parameters \
+    --parameter-filters "Key=Name,Option=BeginsWith,Values=/pinkconnect-prod/" \
+    --query 'Parameters[].Name' --output text \
+    --region "$AWS_REGION" --profile "$AWS_PROFILE" \
+  | tr '\t' '\n' \
+  | xargs -n1 -I{} aws ssm delete-parameter --name {} \
+      --region "$AWS_REGION" --profile "$AWS_PROFILE"
 
 # Per-connection secrets under pinkconnect-prod/.
 aws secretsmanager list-secrets --region "$AWS_REGION" --profile "$AWS_PROFILE" \
@@ -185,8 +194,10 @@ commands.
   takes one last snapshot named `<DBClusterIdentifier>-final-snapshot-<timestamp>`.
   List with `aws docdb describe-db-cluster-snapshots`; delete with
   `aws docdb delete-db-cluster-snapshot`.
-- **The ECR repo + image.** If you created the `pinkconnect` ECR repo
-  as part of the install, it's not in any stack. `aws ecr delete-repository --repository-name pinkconnect --force --region "$AWS_REGION" --profile "$AWS_PROFILE"`.
+- **The ECR repos + images.** Both the `pinkconnect` repo (created
+  in §1 of the install) and the `mcpfarm` repo (created in §9.1 if
+  you deployed MCPfarm) are outside CFN. Clean up both:
+  `aws ecr delete-repository --repository-name pinkconnect --force --region "$AWS_REGION" --profile "$AWS_PROFILE"` and the same for `mcpfarm`.
 - **ACM certs and Route53 records you created manually for the install**
   (e.g. the validation CNAME, the wildcard cert). ACM certs can be
   deleted with `aws acm delete-certificate` once they're no longer
