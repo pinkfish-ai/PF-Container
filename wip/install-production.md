@@ -1,15 +1,17 @@
 # PinkConnect + MCPfarm — Production Install (multi-AZ)
 
-> **⚠️ Pre-production / validate before going live.** This runbook is
-> the production-hardening profile — multi-AZ, BYOK encryption, WAF,
-> CloudFront, cross-region backup, autoscaling. It's been written
-> against bundle v0.2.0 (PinkConnect §1-§11 and MCPfarm §12 both
-> covered) but has **not** been re-run end-to-end on a fresh AWS
-> account in this revision. Use it as your production recipe, but
-> sanity-check it against your own AWS environment first and contact
-> Pinkfish (pf-support@pinkfish.ai) if you hit something unexpected.
-> The [smoke install](../install.md) is the daily-driven, fully
-> validated path; this is the harder-hat sibling.
+> **Status: validated against bundle v0.2.0 (2026-05-16).** This runbook
+> is the production-hardening profile — multi-AZ, BYOK encryption, WAF,
+> CloudFront, cross-region backup, autoscaling. PinkConnect §1-§11 and
+> MCPfarm §12 were walked end-to-end on a single AWS account: real
+> deploys, real OpenWeather smoke call through CloudFront → ALB →
+> multi-AZ ECS → DocDB → Secrets Manager → vendor and back, real MCP
+> dispatch through MCPfarm → PinkConnect → DocDB and back, real AWS
+> Backup recovery point copied cross-region us-east-1 → us-west-2.
+> Doc gaps surfaced during the run are committed into this revision.
+> Still parked in `wip/` because it hasn't been run on a separate
+> production AWS account yet — the bundle is small enough that this
+> mostly matters for IAM/KMS isolation, not the runbook itself.
 
 Production-grade deploy: multi-AZ DocDB, redundant NAT, VPC endpoints,
 WAF on both PinkConnect and MCPfarm ALBs, BYOK encryption, CloudFront
