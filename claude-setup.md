@@ -25,7 +25,7 @@ in §1–§8 of each runbook; MCPfarm lives in §9.
 
 ## For Claude — orchestration rules
 
-### 1. Ask the human five things up front
+### 1. Ask the human six things up front
 
 1. **AWS profile name and account ID.** Verify with
    `aws sts get-caller-identity --profile <name>` before doing
@@ -44,6 +44,14 @@ in §1–§8 of each runbook; MCPfarm lives in §9.
    layer (MCPfarm) on top of PinkConnect, or just PinkConnect alone?"
    If they say PinkConnect-only, skip phases 10a–10d below. If they
    say both (default), drive the full flow.
+6. **Rate-limiter backend** *(only if §5 was "include MCPfarm")*.
+   Ask: "Want rate limiting on the MCP layer? Defaults to off
+   (`noop`) — fine for smoke. Say `yes` to set up Upstash Redis (free
+   tier, ~2 min signup at https://upstash.com). Other backends
+   available: `elasticache`, `dynamodb` — pick those only if you're
+   customizing further." Their answer determines `RateLimiterBackend`
+   in phase 10d's CFN deploy. If `upstash`, also drive the Upstash
+   signup + SSM puts before the deploy (see install-smoke §9.3).
 
 ### 2. Decide which install doc to follow
 
@@ -67,7 +75,7 @@ ls pinkconnect-*.tar.gz pinkfish-connections-admin-app-main.zip
 For MCPfarm (required when phase 5 answer was "include MCPfarm"):
 
 ```bash
-ls mcp-server-ecs-*.tar.gz
+ls mcpfarm-*.tar.gz
 ```
 
 All required artifacts must exist. If any are missing, **stop** and
@@ -103,7 +111,7 @@ Same shape for smoke and production; production adds two extra stacks
 | 9 | Deploy openweather + create connection + proxy call (PinkConnect smoke) | 1 min | requires §8 |
 | 10a *(MCPfarm)* | Push MCPfarm image to ECR | 2 min | requires §2's ECR + §9 |
 | 10b *(MCPfarm)* | ACM cert for MCPfarm hostname | 2 min | runs alongside 10a |
-| 10c *(MCPfarm)* | Verify JWT + Upstash SSM params (shared with PinkConnect) | <1 min | requires §5b |
+| 10c *(MCPfarm)* | Verify JWT SSM param. If phase 6 answer was "yes, Upstash", also drive the Upstash signup + put the two SSM params; otherwise skip. | <1 min for noop, ~3 min for Upstash | requires §5b |
 | 10d *(MCPfarm)* | Deploy `mcpfarm-ecs.yaml` pointing at PinkConnect ALB | 6–8 min | requires 10a, 10b, 10c |
 | 10e *(MCPfarm)* | Dispatch smoke — JWT → `/dynamic/openweather` → real weather JSON | 1 min | requires 10d |
 | 11 *(prod only)* | Validate cross-region backup copy via on-demand `start-copy-job` | 5 min | requires §7c |
@@ -124,11 +132,11 @@ Same shape for smoke and production; production adds two extra stacks
 | 7c | Stack status `CREATE_COMPLETE`; `BackupRoleArn` + `BackupVaultName` outputs |
 | 8 | `curl https://<host>/health/ready` returns `200 {"status":"ready"}` |
 | 9 | Proxy call through PinkConnect returns real upstream data |
-| 10a | `aws ecr describe-images --repository-name pinkfish-mcp-server` lists the pushed tag |
+| 10a | `aws ecr describe-images --repository-name mcpfarm` lists the pushed tag |
 | 10b | `aws acm describe-certificate` for the MCPfarm hostname returns `Status: ISSUED` |
-| 10c | `aws ssm get-parameter` returns `jwt-public-key`, `upstash-ratelimit-redis-url`, `upstash-ratelimit-redis-token` under the shared `/pinkconnect/*` prefix |
-| 10d | Stack `mcpfarm-ecs` status `CREATE_COMPLETE`; `curl https://<mcpfarm-host>/health` returns 200 |
-| 10e | `curl -X POST https://<mcpfarm-host>/dynamic/openweather -H "Authorization: Bearer <jwt>" -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"weather_get_current","arguments":{"lat":51.5074,"lon":-0.1278}}}'` returns real OpenWeather JSON |
+| 10c | `aws ssm get-parameter` returns `jwt-public-key` under `/pinkconnect/*`. Upstash params (`upstash-ratelimit-redis-url`, `upstash-ratelimit-redis-token`) are required *only* when phase 6 answer was "yes, Upstash"; skip otherwise. |
+| 10d | Stack `mcpfarm-ecs` status `CREATE_COMPLETE`; `curl https://<mcpfarm-host>/health/live` returns 200. CFN deploy includes `RateLimiterBackend=<noop\|upstash\|...>` from phase 6's answer. |
+| 10e | `curl -X POST https://<mcpfarm-host>/dynamic/openweather -H "Authorization: Bearer <jwt>" -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"openweather_get_current_weather","arguments":{"PCID":"<connection_id>","lat":51.5074,"lon":-0.1278}}}'` returns real OpenWeather JSON. The `PCID` argument is required — it's the connection_id from phase 9. |
 | 11 | `aws backup list-recovery-points-by-backup-vault --region <dest-region>` shows the copied recovery point |
 
 ### 7. When something breaks

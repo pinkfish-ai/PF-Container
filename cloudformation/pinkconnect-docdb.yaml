@@ -124,8 +124,13 @@ Resources:
 
   Cluster:
     Type: AWS::DocDB::DBCluster
-    DeletionPolicy: Snapshot
-    UpdateReplacePolicy: Snapshot
+    # Smoke default: Delete (no final snapshot on tear-down — smoke is
+    # throwaway and snapshot accumulation costs storage forever). For
+    # production where data loss matters, override the template or use
+    # the production install profile (WIP) which will set this to
+    # Snapshot.
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
     Properties:
       DBClusterIdentifier: !Sub '${EnvironmentName}-docdb'
       MasterUsername: !Ref MasterUsername

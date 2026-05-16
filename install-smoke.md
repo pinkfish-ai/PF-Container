@@ -308,8 +308,15 @@ Run a real upstream call through PinkConnect's proxy:
 ```bash
 CONN_ID=<from previous response>
 curl "http://localhost:3000/api/proxy/openweather/${CONN_ID}/data/2.5/weather?lat=44.34&lon=10.99"
-# 200 with real OpenWeather JSON. Proves: JWT verify → DB lookup →
-# Secrets Manager read → decrypt → inject appid → upstream call → response.
+# 200 with the OpenWeather JSON wrapped in {"output": {...}}. Proves:
+# JWT verify → DB lookup → Secrets Manager read → decrypt → inject
+# appid → upstream call → response. The wrapping comes from the
+# admin app's /api/proxy/* route, which forwards the upstream body
+# unchanged inside an `output` envelope so connection metadata can
+# travel alongside in the future. Hitting PinkConnect directly
+# (https://${HOST}/connect/openweather/${CONN_ID}/data/2.5/weather?...
+# with auth-token: <JWT>) returns the raw upstream body without the
+# envelope.
 ```
 
 ---
@@ -351,16 +358,26 @@ it already covers `mcp.example.com` — skip this step. Otherwise, request
 a second cert covering `mcp.example.com` exactly as you did in §5, add
 the DNS-validation CNAME, and capture the new `MCP_CERT_ARN`.
 
-### 9.3 (One-time) Verify the JWT + Upstash params are present
+### 9.3 (Optional) Pick a rate-limiter backend
 
-MCPfarm reads its secrets from the same `/pinkconnect/*` SSM namespace
-PinkConnect uses. The smoke install populated `/pinkconnect/jwt-public-key`
-in §4. If you did NOT enable usage tracking on PinkConnect, you also
-need to add the Upstash creds now:
+MCPfarm has a pluggable rate-limiter (PIN-6384). The CFN template
+exposes `RateLimiterBackend` with these choices:
+
+| Backend | When to use | Extra setup |
+|---|---|---|
+| `noop` (default) | Smoke installs; environments where your edge / app already throttles | None |
+| `upstash` | Anything internet-facing that needs MCP-layer rate limiting | Sign up at https://upstash.com (free tier covers smoke-scale), then put the REST URL + token in SSM (commands below) |
+| `elasticache` / `dynamodb` | Customizing — application code supports these but the CFN template doesn't wire their SSM params yet | Roll your own |
+
+For smoke, leave `RateLimiterBackend` at its default (`noop`) and skip
+the rest of this section. The container starts without any rate-limit
+dependency.
+
+If you want Upstash:
 
 ```bash
-# Sign up for a free Upstash Redis instance at https://upstash.com
-# (Free tier covers smoke-scale traffic; ~2 min to create.)
+# After creating the Upstash Redis instance — REST URL + token from
+# the Upstash console.
 aws ssm put-parameter \
   --region "$AWS_REGION" --profile "$AWS_PROFILE" \
   --name /pinkconnect/upstash-ratelimit-redis-url \
@@ -370,6 +387,8 @@ aws ssm put-parameter \
   --name /pinkconnect/upstash-ratelimit-redis-token \
   --type SecureString --overwrite --value '<your-rest-token>'
 ```
+
+…then pass `RateLimiterBackend=upstash` in the deploy step below.
 
 ### 9.4 Deploy `mcpfarm-ecs.yaml`
 
@@ -401,6 +420,8 @@ aws cloudformation deploy \
     CustomDomainName="$MCP_HOST" \
     Route53HostedZoneId="$HOSTED_ZONE_ID" \
     CertificateArn="$MCP_CERT_ARN"
+    # Add `RateLimiterBackend=upstash` here if you set up Upstash in §9.3.
+    # Default (no override) is `noop` — no rate limiting, no Upstash dependency.
 ```
 
 ### 9.5 Smoke-test the dispatch path

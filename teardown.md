@@ -189,10 +189,13 @@ commands.
   copy). You created this manually outside any stack. Delete with
   `aws backup delete-backup-vault --backup-vault-name <name> --region <dest-region>`
   after clearing recovery points.
-- **The DocDB final snapshot.** `pinkconnect-docdb.yaml` has
-  `DeletionPolicy: Snapshot` on the cluster, so deleting the stack
-  takes one last snapshot named `<DBClusterIdentifier>-final-snapshot-<timestamp>`.
-  List with `aws docdb describe-db-cluster-snapshots`; delete with
+- **The DocDB final snapshot** *(production only)*. The smoke profile's
+  `pinkconnect-docdb.yaml` ships with `DeletionPolicy: Delete` — no
+  final snapshot is taken on tear-down, so there's nothing to clean up.
+  Production overrides to `Snapshot`; in that case `delete-stack`
+  takes one last snapshot named
+  `<DBClusterIdentifier>-final-snapshot-<timestamp>`. List with
+  `aws docdb describe-db-cluster-snapshots`; delete with
   `aws docdb delete-db-cluster-snapshot`.
 - **The ECR repos + images.** Both the `pinkconnect` repo (created
   in §1 of the install) and the `mcpfarm` repo (created in §9.1 if
