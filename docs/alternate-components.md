@@ -7,10 +7,10 @@ spells out (a) what's invariant — the runtime contract the container
 relies on — and (b) the common substitutions, with what changes for
 each.
 
-[`install-smoke.md`](./install-smoke.md) (cheap, single-AZ) and
-[`install-production.md`](./install-production.md) (multi-AZ, hardened)
+[`../install.md`](./../install.md) (cheap, single-AZ) and
+[`../wip/install-production.md`](./../wip/install-production.md) (multi-AZ, hardened)
 are the right docs to follow if you're using all of the defaults. Use
-this one when you need to deviate. [`claude-setup.md`](./claude-setup.md)
+this one when you need to deviate. [`../claude-setup.md`](../claude-setup.md)
 is the Claude orchestrator entry that routes to whichever install
 profile fits.
 
@@ -65,7 +65,7 @@ real workloads.
    section — Atlas isn't in your VPC, so there's no SG to authorize.
 
 The install otherwise looks identical: same `pinkconnect-ecs.yaml`,
-same SSM secrets, same flow as `install-smoke.md` / `install-production.md`.
+same SSM secrets, same flow as `../install.md` / `../wip/install-production.md`.
 
 ### Self-managed MongoDB
 

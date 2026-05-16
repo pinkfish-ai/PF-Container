@@ -1,4 +1,6 @@
-# PinkConnect — Production Install (multi-AZ)
+# PinkConnect — Production Install (multi-AZ) — **WIP**
+
+> **⚠️ Work in progress.** This runbook hasn't been re-validated end-to-end against bundle v0.2.0. It worked for bundle 0.1.0 but may have gaps (stale parameter names, missing MCPfarm section, untested CFN params). The [smoke install](../install.md) is the validated, customer-ready path. Use this only if you specifically need the production hardening features below — and contact Pinkfish (pf-support@pinkfish.ai) first to confirm we'll back you up while you go through it.
 
 Production-grade deploy: multi-AZ DocDB, redundant NAT, VPC endpoints,
 WAF, BYOK encryption, CloudFront in front of the ALB, AWS Backup with
@@ -9,10 +11,10 @@ because CloudFront propagation takes ~10 min and there are 2 extra
 stacks). Most of that's waiting; commands themselves are fast.
 
 **Read this before starting:**
-- [`gotchas.md`](./gotchas.md) — especially "SG wire-up timing", "CDN ↔ ECS DNS coordination", "CloudFront certs must be in us-east-1"
-- [`install-smoke.md`](./install-smoke.md) — if you haven't installed before, smoke first; production reuses the same machinery
-- [`parameter-reference.md`](./parameter-reference.md) — full param tables
-- [`teardown.md`](./teardown.md) — for cleanup
+- [`../docs/gotchas.md`](../docs/gotchas.md) — especially "SG wire-up timing", "CDN ↔ ECS DNS coordination", "CloudFront certs must be in us-east-1"
+- [`../install.md`](../install.md) — if you haven't installed before, smoke first; production reuses the same machinery
+- [`../docs/parameter-reference.md`](../docs/parameter-reference.md) — full param tables
+- [`../teardown.md`](../teardown.md) — for cleanup
 
 ---
 
@@ -339,7 +341,7 @@ curl -sI "https://${HOST}/health/ready" | grep -i "via\|x-cache"
 ```
 
 If the headers show CloudFront, the CloudFront → ALB origin path is
-healthy. If you see a TLS error instead, see `troubleshooting.md`
+healthy. If you see a TLS error instead, see `../docs/troubleshooting.md`
 ("CloudFront returns 502 from CloudFront origin").
 
 ---
@@ -347,7 +349,7 @@ healthy. If you see a TLS error instead, see `troubleshooting.md`
 ## 10. Validate the cross-region backup copy
 
 The plan's `CopyAction` fires on scheduled runs; to validate
-on-demand, run a backup + copy explicitly. See `gotchas.md` ("AWS
+on-demand, run a backup + copy explicitly. See `../docs/gotchas.md` ("AWS
 Backup `CopyAction` only fires on scheduled runs") for why.
 
 ```bash
@@ -418,7 +420,7 @@ for your compliance team.
 
 ## 11. Smoke test with a real OpenWeather connection
 
-Same flow as `install-smoke.md` § 8 but pointed at the production
+Same flow as `../install.md` § 8 but pointed at the production
 host. Confirms the JWT verify / encryption / proxy pipeline works
 through the full production topology (CloudFront → ALB → multi-AZ
 ECS → multi-AZ DocDB).
@@ -462,7 +464,7 @@ curl "http://localhost:3000/api/proxy/openweather/${CONN_ID}/data/2.5/weather?la
 
 ## Tear down (when no longer needed)
 
-See [`teardown.md`](./teardown.md). Order: CDN + backup first, then
+See [`../teardown.md`](../teardown.md). Order: CDN + backup first, then
 ecs, then docdb, then networking. Plus the SSM params under
 `/pinkconnect-prod/*`, the Secrets Manager entries, ACM certs,
 ECR image, destination backup vault.
@@ -471,7 +473,7 @@ ECR image, destination backup vault.
 
 ## Operational notes
 
-- **JWT keypair rotation:** see `gotchas.md` ("JWT keypair regen requires force-redeploy").
+- **JWT keypair rotation:** see `../docs/gotchas.md` ("JWT keypair regen requires force-redeploy").
 - **Image upgrades:** push a new tag to ECR, then `aws cloudformation deploy --parameter-overrides ContainerImage=<new-uri>`. ECS rolls the service with the deployment circuit breaker enabled (auto-rollback on bad releases).
 - **Adding more orgs:** PinkConnect partitions by `(selectedOrg, providerId)` claims in the JWT. Your app mints JWTs with whatever `selectedOrg` the user is in; no infra change needed.
 - **Monitoring:** CloudWatch log group `/ecs/pinkconnect-prod`. Set up a metric filter for `mcp.server.config.invalid` to alert on config drift.

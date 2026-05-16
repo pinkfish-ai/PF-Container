@@ -150,11 +150,28 @@ Parameters:
       'true' (default) creates a Route53 A-alias for CustomDomainName
       pointing at the ALB.
 
+  RateLimiterBackend:
+    Type: String
+    AllowedValues: [ 'noop', 'upstash', 'elasticache', 'dynamodb' ]
+    Default: 'noop'
+    Description: >
+      Which rate-limiter backend MCPfarm should use (PIN-6384).
+      'noop' (default) disables rate-limiting — appropriate for smoke
+      installs and any environment where the customer's edge / app
+      already throttles. 'upstash' requires the SSM params
+      `<SsmPrefix>/upstash-ratelimit-redis-url` and
+      `<SsmPrefix>/upstash-ratelimit-redis-token` to exist; sign up
+      for a free Upstash Redis instance at https://upstash.com.
+      'elasticache' and 'dynamodb' backends exist in the application
+      code but their SSM param wiring is not yet plumbed in this
+      template — pick one of those only if you're customizing further.
+
 Conditions:
   InternalAlbCond: !Equals [ !Ref InternalAlb, 'true' ]
   HasCustomKmsKeyCond: !Not [ !Equals [ !Ref KmsKeyArn, '' ] ]
   HasWebAclCond: !Not [ !Equals [ !Ref WebAclArn, '' ] ]
   CreateDnsRecordCond: !Equals [ !Ref CreateDnsRecord, 'true' ]
+  RateLimiterUpstashCond: !Equals [ !Ref RateLimiterBackend, 'upstash' ]
 
 Resources:
 
@@ -352,6 +369,11 @@ Resources:
             # route credentialed upstream calls through the customer's
             # own PinkConnect rather than a Pinkfish-hosted endpoint.
             - { Name: CONNECT_URL, Value: !Ref ConnectUrl }
+            # RATE_LIMITER_BACKEND drives the pluggable rate-limiter
+            # selection in the application code (PIN-6384). 'noop' is
+            # the smoke default — no Upstash dependency. Picking
+            # 'upstash' requires the two SSM params below to exist.
+            - { Name: RATE_LIMITER_BACKEND, Value: !Ref RateLimiterBackend }
             # API_URL is intentionally UNSET — that's the env-flag the
             # platform-side createServer() branches on to load MCP
             # definitions from the baked-in mcp-server-definitions/
@@ -360,10 +382,20 @@ Resources:
           Secrets:
             - Name: JWT_PUBLIC_KEY
               ValueFrom: !Sub '${SsmPrefix}/jwt-public-key'
-            - Name: UPSTASH_RATELIMIT_REDIS_URL
-              ValueFrom: !Sub '${SsmPrefix}/upstash-ratelimit-redis-url'
-            - Name: UPSTASH_RATELIMIT_REDIS_TOKEN
-              ValueFrom: !Sub '${SsmPrefix}/upstash-ratelimit-redis-token'
+            # Upstash secrets are only referenced when the customer
+            # opted in via RateLimiterBackend=upstash. ECS resolves
+            # `Secrets` at task-start time, so referencing absent SSM
+            # params crashes the task — make the entries conditional.
+            - !If
+              - RateLimiterUpstashCond
+              - Name: UPSTASH_RATELIMIT_REDIS_URL
+                ValueFrom: !Sub '${SsmPrefix}/upstash-ratelimit-redis-url'
+              - !Ref AWS::NoValue
+            - !If
+              - RateLimiterUpstashCond
+              - Name: UPSTASH_RATELIMIT_REDIS_TOKEN
+                ValueFrom: !Sub '${SsmPrefix}/upstash-ratelimit-redis-token'
+              - !Ref AWS::NoValue
           LogConfiguration:
             LogDriver: awslogs
             Options:

@@ -17,15 +17,15 @@ parameter points at PinkConnect's ALB.
 
 If a human is reading this directly: the human-facing overview is in
 [`README.md`](./README.md). The step-by-step install runbooks are
-[`install-smoke.md`](./install-smoke.md) and
-[`install-production.md`](./install-production.md). PinkConnect lives
+[`install.md`](./install.md) and
+[`wip/install-production.md`](./wip/install-production.md). PinkConnect lives
 in §1–§8 of each runbook; MCPfarm lives in §9.
 
 ---
 
 ## For Claude — orchestration rules
 
-### 1. Ask the human five things up front
+### 1. Ask the human six things up front
 
 1. **AWS profile name and account ID.** Verify with
    `aws sts get-caller-identity --profile <name>` before doing
@@ -44,17 +44,25 @@ in §1–§8 of each runbook; MCPfarm lives in §9.
    layer (MCPfarm) on top of PinkConnect, or just PinkConnect alone?"
    If they say PinkConnect-only, skip phases 10a–10d below. If they
    say both (default), drive the full flow.
+6. **Rate-limiter backend** *(only if §5 was "include MCPfarm")*.
+   Ask: "Want rate limiting on the MCP layer? Defaults to off
+   (`noop`) — fine for smoke. Say `yes` to set up Upstash Redis (free
+   tier, ~2 min signup at https://upstash.com). Other backends
+   available: `elasticache`, `dynamodb` — pick those only if you're
+   customizing further." Their answer determines `RateLimiterBackend`
+   in phase 10d's CFN deploy. If `upstash`, also drive the Upstash
+   signup + SSM puts before the deploy (see install.md §9.3).
 
 ### 2. Decide which install doc to follow
 
 | Customer answer | Follow | Use case |
 |---|---|---|
-| **Smoke** | [`install-smoke.md`](./install-smoke.md) | Single-AZ, no WAF, no CDN, no cross-region backup. Validate the install works on the customer's AWS, then either keep running for dev or tear down. |
-| **Production** | [`install-production.md`](./install-production.md) | Multi-AZ DocDB, redundant NAT, VPC endpoints, WAF on the ALB, BYOK CMK, 365-day logs, 35-day backup retention with cross-region copy, CloudFront in front of the ALB. Customer-facing service. Has prerequisites the human pre-creates (see install-production.md § "Production prerequisites"). |
+| **Smoke** (default — the primary path) | [`install.md`](./install.md) | Single-AZ, no WAF, no CDN, no cross-region backup. Self-contained doc — drive the install end-to-end from it. |
+| **Production** (WIP — not customer-ready yet) | [`wip/install-production.md`](./wip/install-production.md) | Multi-AZ DocDB, redundant NAT, VPC endpoints, WAF, BYOK CMK, 365-day logs, 35-day backup retention with cross-region copy, CloudFront. **Currently work-in-progress** — gaps caught during validation, hasn't been re-tested end-to-end against bundle v0.2.0. If the human asks for production, walk them through it but flag at the top that they should consult Pinkfish before relying on it. |
 
-Drive the install end-to-end from whichever install doc the human
-picked. The doc is self-contained — you don't need to merge content
-from multiple files.
+For 99% of installs, you'll be following `install.md`. Production is
+parked in `wip/` until it's been validated end-to-end the way smoke
+has.
 
 ### 3. Confirm binary artifacts are on disk
 
@@ -67,7 +75,7 @@ ls pinkconnect-*.tar.gz pinkfish-connections-admin-app-main.zip
 For MCPfarm (required when phase 5 answer was "include MCPfarm"):
 
 ```bash
-ls mcp-server-ecs-*.tar.gz
+ls mcpfarm-*.tar.gz
 ```
 
 All required artifacts must exist. If any are missing, **stop** and
@@ -76,11 +84,11 @@ and the install can't proceed without them.
 
 ### 4. Read these before deploying
 
-- [`gotchas.md`](./gotchas.md) — non-obvious behaviors that bite mid-install. Read in full before starting step 1.
-- [`troubleshooting.md`](./troubleshooting.md) — symptom → cause+fix when something breaks during/after install.
-- [`parameter-reference.md`](./parameter-reference.md) — what every CFN parameter does. Reference when you need to know what a flag means.
+- [`docs/gotchas.md`](./docs/gotchas.md) — non-obvious behaviors that bite mid-install. Read in full before starting step 1.
+- [`docs/troubleshooting.md`](./docs/troubleshooting.md) — symptom → cause+fix when something breaks during/after install.
+- [`docs/parameter-reference.md`](./docs/parameter-reference.md) — what every CFN parameter does. Reference when you need to know what a flag means.
 - [`teardown.md`](./teardown.md) — delete-everything sequence for when the customer's done.
-- [`alternate-components.md`](./alternate-components.md) — swap-out playbook (Atlas instead of DocDB, EKS instead of Fargate, Cloudflare instead of CloudFront, etc.). Only relevant if the human asks "can we use X instead of Y?"
+- [`docs/alternate-components.md`](./docs/alternate-components.md) — swap-out playbook (Atlas instead of DocDB, EKS instead of Fargate, Cloudflare instead of CloudFront, etc.). Only relevant if the human asks "can we use X instead of Y?"
 
 ### 5. Phase ordering and parallelization (both profiles)
 
@@ -103,7 +111,7 @@ Same shape for smoke and production; production adds two extra stacks
 | 9 | Deploy openweather + create connection + proxy call (PinkConnect smoke) | 1 min | requires §8 |
 | 10a *(MCPfarm)* | Push MCPfarm image to ECR | 2 min | requires §2's ECR + §9 |
 | 10b *(MCPfarm)* | ACM cert for MCPfarm hostname | 2 min | runs alongside 10a |
-| 10c *(MCPfarm)* | Verify JWT + Upstash SSM params (shared with PinkConnect) | <1 min | requires §5b |
+| 10c *(MCPfarm)* | Verify JWT SSM param. If phase 6 answer was "yes, Upstash", also drive the Upstash signup + put the two SSM params; otherwise skip. | <1 min for noop, ~3 min for Upstash | requires §5b |
 | 10d *(MCPfarm)* | Deploy `mcpfarm-ecs.yaml` pointing at PinkConnect ALB | 6–8 min | requires 10a, 10b, 10c |
 | 10e *(MCPfarm)* | Dispatch smoke — JWT → `/dynamic/openweather` → real weather JSON | 1 min | requires 10d |
 | 11 *(prod only)* | Validate cross-region backup copy via on-demand `start-copy-job` | 5 min | requires §7c |
@@ -124,11 +132,11 @@ Same shape for smoke and production; production adds two extra stacks
 | 7c | Stack status `CREATE_COMPLETE`; `BackupRoleArn` + `BackupVaultName` outputs |
 | 8 | `curl https://<host>/health/ready` returns `200 {"status":"ready"}` |
 | 9 | Proxy call through PinkConnect returns real upstream data |
-| 10a | `aws ecr describe-images --repository-name pinkfish-mcp-server` lists the pushed tag |
+| 10a | `aws ecr describe-images --repository-name mcpfarm` lists the pushed tag |
 | 10b | `aws acm describe-certificate` for the MCPfarm hostname returns `Status: ISSUED` |
-| 10c | `aws ssm get-parameter` returns `jwt-public-key`, `upstash-ratelimit-redis-url`, `upstash-ratelimit-redis-token` under the shared `/pinkconnect/*` prefix |
-| 10d | Stack `mcpfarm-ecs` status `CREATE_COMPLETE`; `curl https://<mcpfarm-host>/health` returns 200 |
-| 10e | `curl -X POST https://<mcpfarm-host>/dynamic/openweather -H "Authorization: Bearer <jwt>" -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"weather_get_current","arguments":{"lat":51.5074,"lon":-0.1278}}}'` returns real OpenWeather JSON |
+| 10c | `aws ssm get-parameter` returns `jwt-public-key` under `/pinkconnect/*`. Upstash params (`upstash-ratelimit-redis-url`, `upstash-ratelimit-redis-token`) are required *only* when phase 6 answer was "yes, Upstash"; skip otherwise. |
+| 10d | Stack `mcpfarm-ecs` status `CREATE_COMPLETE`; `curl https://<mcpfarm-host>/health/live` returns 200. CFN deploy includes `RateLimiterBackend=<noop\|upstash\|...>` from phase 6's answer. |
+| 10e | `curl -X POST https://<mcpfarm-host>/dynamic/openweather -H "Authorization: Bearer <jwt>" -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"openweather_get_current_weather","arguments":{"PCID":"<connection_id>","lat":51.5074,"lon":-0.1278}}}'` returns real OpenWeather JSON. The `PCID` argument is required — it's the connection_id from phase 9. |
 | 11 | `aws backup list-recovery-points-by-backup-vault --region <dest-region>` shows the copied recovery point |
 
 ### 7. When something breaks
@@ -136,7 +144,7 @@ Same shape for smoke and production; production adds two extra stacks
 Read these in order:
 
 1. The error message itself. AWS errors usually name the resource and the failure mode.
-2. [`troubleshooting.md`](./troubleshooting.md). Look up the symptom.
+2. [`docs/troubleshooting.md`](./docs/troubleshooting.md). Look up the symptom.
 3. CloudWatch log group `/ecs/<env>` for the structured `mcp.server.config.invalid` line — single most useful signal when `/health/ready` is stuck at 503.
 4. The CFN template itself (they're short, ~100–400 lines each).
 5. As a last resort, tell the human and surface a specific question.

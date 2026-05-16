@@ -12,9 +12,9 @@ the Route53 hosted zone persists.
 for DocumentDB (~8 min) and the ALB (~5 min) to provision.
 
 **Reference docs to keep open while doing this install:**
-- [`gotchas.md`](./gotchas.md) — read first, especially "SG wire-up timing"
-- [`troubleshooting.md`](./troubleshooting.md) — for when something breaks
-- [`parameter-reference.md`](./parameter-reference.md) — what every CFN param means
+- [`docs/docs/gotchas.md`](./docs/docs/gotchas.md) — read first, especially "SG wire-up timing"
+- [`docs/troubleshooting.md`](./docs/troubleshooting.md) — for when something breaks
+- [`docs/parameter-reference.md`](./docs/parameter-reference.md) — what every CFN param means
 - [`teardown.md`](./teardown.md) — when you're done
 
 ---
@@ -153,7 +153,7 @@ put /pinkconnect/jwt-public-key       "$(cat pinkfish-connections-admin-app-main
 
 **Treat `oauth-encryption-key` and `token-encryption-key` like a
 database master password** — losing them makes every stored
-per-connection credential unrecoverable. See `gotchas.md`.
+per-connection credential unrecoverable. See `docs/docs/gotchas.md`.
 
 ---
 
@@ -194,7 +194,7 @@ and waits ~15 min for the first task to be healthy; if the task SG
 isn't authorized on the docdb SG within that window, the task fails
 its health check and the stack rolls back. Fix: start the deploy in
 the background, poll for the task SG to appear, authorize it
-immediately. See `gotchas.md` if you want the full story.
+immediately. See `docs/docs/gotchas.md` if you want the full story.
 
 ```bash
 HOSTED_ZONE_ID=$(aws route53 list-hosted-zones --profile "$AWS_PROFILE" \
@@ -286,7 +286,7 @@ curl -X POST "http://localhost:3000/api/admin/services/openweather/deploy" \
 ```
 
 Create a user-connection. **For API-key services, the key goes in
-`custom_fields`, not `credentials`** (see `gotchas.md`):
+`custom_fields`, not `credentials`** (see `docs/docs/gotchas.md`):
 
 ```bash
 curl -X POST "http://localhost:3000/api/connections/core/openweather" \
@@ -308,8 +308,15 @@ Run a real upstream call through PinkConnect's proxy:
 ```bash
 CONN_ID=<from previous response>
 curl "http://localhost:3000/api/proxy/openweather/${CONN_ID}/data/2.5/weather?lat=44.34&lon=10.99"
-# 200 with real OpenWeather JSON. Proves: JWT verify → DB lookup →
-# Secrets Manager read → decrypt → inject appid → upstream call → response.
+# 200 with the OpenWeather JSON wrapped in {"output": {...}}. Proves:
+# JWT verify → DB lookup → Secrets Manager read → decrypt → inject
+# appid → upstream call → response. The wrapping comes from the
+# admin app's /api/proxy/* route, which forwards the upstream body
+# unchanged inside an `output` envelope so connection metadata can
+# travel alongside in the future. Hitting PinkConnect directly
+# (https://${HOST}/connect/openweather/${CONN_ID}/data/2.5/weather?...
+# with auth-token: <JWT>) returns the raw upstream body without the
+# envelope.
 ```
 
 ---
@@ -330,7 +337,10 @@ PinkConnect's image was (see §2). Replace the tag with the version
 Pinkfish sent you:
 
 ```bash
-MCP_TAG=v0.1.0
+# Match the tag in the tarball filename — bundle v0.2.0 ships
+# mcpfarm-v0.2.0.tar.gz. Check VERSION + RELEASE-NOTES.md in this
+# directory for the current bundle's component versions.
+MCP_TAG=v0.2.0
 MCP_REPO=mcpfarm
 MCP_ECR_URI="${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${MCP_REPO}"
 
@@ -348,16 +358,26 @@ it already covers `mcp.example.com` — skip this step. Otherwise, request
 a second cert covering `mcp.example.com` exactly as you did in §5, add
 the DNS-validation CNAME, and capture the new `MCP_CERT_ARN`.
 
-### 9.3 (One-time) Verify the JWT + Upstash params are present
+### 9.3 (Optional) Pick a rate-limiter backend
 
-MCPfarm reads its secrets from the same `/pinkconnect/*` SSM namespace
-PinkConnect uses. The smoke install populated `/pinkconnect/jwt-public-key`
-in §4. If you did NOT enable usage tracking on PinkConnect, you also
-need to add the Upstash creds now:
+MCPfarm has a pluggable rate-limiter (PIN-6384). The CFN template
+exposes `RateLimiterBackend` with these choices:
+
+| Backend | When to use | Extra setup |
+|---|---|---|
+| `noop` (default) | Smoke installs; environments where your edge / app already throttles | None |
+| `upstash` | Anything internet-facing that needs MCP-layer rate limiting | Sign up at https://upstash.com (free tier covers smoke-scale), then put the REST URL + token in SSM (commands below) |
+| `elasticache` / `dynamodb` | Customizing — application code supports these but the CFN template doesn't wire their SSM params yet | Roll your own |
+
+For smoke, leave `RateLimiterBackend` at its default (`noop`) and skip
+the rest of this section. The container starts without any rate-limit
+dependency.
+
+If you want Upstash:
 
 ```bash
-# Sign up for a free Upstash Redis instance at https://upstash.com
-# (Free tier covers smoke-scale traffic; ~2 min to create.)
+# After creating the Upstash Redis instance — REST URL + token from
+# the Upstash console.
 aws ssm put-parameter \
   --region "$AWS_REGION" --profile "$AWS_PROFILE" \
   --name /pinkconnect/upstash-ratelimit-redis-url \
@@ -367,6 +387,8 @@ aws ssm put-parameter \
   --name /pinkconnect/upstash-ratelimit-redis-token \
   --type SecureString --overwrite --value '<your-rest-token>'
 ```
+
+…then pass `RateLimiterBackend=upstash` in the deploy step below.
 
 ### 9.4 Deploy `mcpfarm-ecs.yaml`
 
@@ -398,6 +420,8 @@ aws cloudformation deploy \
     CustomDomainName="$MCP_HOST" \
     Route53HostedZoneId="$HOSTED_ZONE_ID" \
     CertificateArn="$MCP_CERT_ARN"
+    # Add `RateLimiterBackend=upstash` here if you set up Upstash in §9.3.
+    # Default (no override) is `noop` — no rate limiting, no Upstash dependency.
 ```
 
 ### 9.5 Smoke-test the dispatch path
@@ -407,21 +431,16 @@ calls back to PinkConnect (via `CONNECT_URL`) to fetch the stored
 credential, then makes the upstream call to api.openweathermap.org.
 
 ```bash
-# Sign a JWT against the keypair PinkConnect uses (public half lives
-# at /pinkconnect/jwt-public-key, populated in §4). The platform
-# verifier accepts only RS256, and the auth middleware requires the
-# `pfAcct` and `selectedOrg` claims in addition to standard `sub` +
-# `exp`. Use the private key generated in §4 to sign with RS256 and
-# include those claims, e.g.:
-#
-#   payload = { sub: '<user>', pfAcct: '<acct>', selectedOrg: '<org>',
-#               exp: now + 3600 }
-#   header  = { alg: 'RS256', kid: '<the kid baked into JWT_PUBLIC_KEY>' }
-#
-# Any JWT issuer in your environment that can sign RS256 with the
-# matching private key works; the smoke does not require a specific
-# issuer.
-JWT='<your-test-jwt>'
+# The admin app you started in §8 already mints JWTs signed against the
+# keypair you generated — grab one from its debug endpoint:
+JWT=$(curl -s http://localhost:3000/api/debug/jwt | jq -r .token)
+
+# (The token is RS256-signed with the private key in keys/private.pem,
+# carries the providerId + selectedOrg claims from .env, and is verified
+# by MCPfarm against /pinkconnect/jwt-public-key. If you want to sign
+# JWTs from your own application instead, see the JWT signing notes in
+# docs/gotchas.md — the smoke doesn't require a specific issuer.)
+
 PCID='<connection_id from §8>'   # the OpenWeather connection
 
 # The Accept header is REQUIRED by the MCP HTTP transport — without it
