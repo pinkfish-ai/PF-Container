@@ -189,6 +189,70 @@ other than the defaults `pinkconnect-prod`, `/pinkconnect-prod`,
 `pinkconnect-prod/`), substitute your actual values into the commands
 above.
 
+### Production prerequisites cleanup *(optional)*
+
+The production install (`wip/install-production.md` prerequisites
+table) creates four AWS resources outside CloudFormation:
+
+- Customer-managed KMS CMK in the deploy region
+- WAFv2 regional Web ACL in the deploy region
+- Wildcard ACM cert in `us-east-1` (covers ALB + CloudFront viewer)
+- AWS Backup destination vault in a different region
+
+Decide whether you want them gone — if you're going to re-install,
+keeping them avoids re-creating + re-validating each one. Otherwise
+clean up:
+
+```bash
+# 1. WAF Web ACL. Requires LockToken (versioning).
+WAF_ARN=$(aws wafv2 list-web-acls --scope REGIONAL --region "$AWS_REGION" \
+  --profile "$AWS_PROFILE" \
+  --query "WebACLs[?Name=='pinkconnect-prod-acl'].ARN" --output text)
+WAF_ID=$(echo "$WAF_ARN" | awk -F/ '{print $NF}')
+WAF_NAME=$(echo "$WAF_ARN" | awk -F/ '{print $(NF-1)}')
+WAF_LOCK=$(aws wafv2 get-web-acl --name "$WAF_NAME" --id "$WAF_ID" \
+  --scope REGIONAL --region "$AWS_REGION" --profile "$AWS_PROFILE" \
+  --query LockToken --output text)
+aws wafv2 delete-web-acl --name "$WAF_NAME" --id "$WAF_ID" \
+  --scope REGIONAL --lock-token "$WAF_LOCK" \
+  --region "$AWS_REGION" --profile "$AWS_PROFILE"
+
+# 2. Destination backup vault — clear any recovery points first.
+DEST_VAULT_NAME=$(echo "$DEST_BACKUP_VAULT_ARN" | awk -F: '{print $NF}' | awk -F/ '{print $NF}')
+DEST_REGION=$(echo "$DEST_BACKUP_VAULT_ARN" | awk -F: '{print $4}')
+aws backup list-recovery-points-by-backup-vault \
+    --backup-vault-name "$DEST_VAULT_NAME" --region "$DEST_REGION" \
+    --profile "$AWS_PROFILE" --query 'RecoveryPoints[].RecoveryPointArn' \
+    --output text \
+  | tr '\t' '\n' \
+  | xargs -n1 -I{} aws backup delete-recovery-point \
+      --backup-vault-name "$DEST_VAULT_NAME" --recovery-point-arn {} \
+      --region "$DEST_REGION" --profile "$AWS_PROFILE"
+# RP deletes are near-instant; the vault delete fails-loud if any survive.
+aws backup delete-backup-vault \
+  --backup-vault-name "$DEST_VAULT_NAME" \
+  --region "$DEST_REGION" --profile "$AWS_PROFILE"
+
+# 3. KMS CMKs (deploy region + dest region if you BYOK'd the dest vault).
+#    Use schedule-key-deletion (7-30 day pending window — 7 is the min).
+#    The key is immediately disabled; deletion happens after the window.
+aws kms schedule-key-deletion --key-id "$KMS_KEY_ARN" \
+  --pending-window-in-days 7 \
+  --region "$AWS_REGION" --profile "$AWS_PROFILE"
+# Repeat for the dest-region CMK if you created one (KMS keys are
+# regional — schedule deletion in the region the key lives in).
+
+# 4. Wildcard ACM cert. Detach from any remaining LB / CloudFront
+#    distributions first — `aws acm delete-certificate` fails-loud if
+#    still attached. Skip this step if you want to keep the cert for
+#    other uses.
+aws acm delete-certificate --certificate-arn "$CERT_ARN" \
+  --region us-east-1 --profile "$AWS_PROFILE"
+```
+
+KMS deletes are reversible during the pending window (`aws kms
+cancel-key-deletion`); the WAF, vault, and ACM cert deletes are not.
+
 ---
 
 ## Things that survive teardown
