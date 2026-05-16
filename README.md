@@ -9,15 +9,26 @@ Run the Pinkfish stack inside your own infrastructure — your AWS account, your
 
 ## Quick start
 
-1. Drop three binary artifacts from Pinkfish into this directory:
-   - `pinkconnect-<version>.tar.gz` — PinkConnect container image
-   - `mcpfarm-<version>.tar.gz` — MCPfarm container image (skip if you don't need MCP)
-   - `pinkfish-connections-admin-app-main.zip` — the admin app
-2. Open this repo in a Claude Code session and tell it:
-   > *"Install PinkConnect + MCPfarm into my AWS account following claude-setup.md."*
-3. Claude asks you 6 things (AWS profile, region, domain, install profile, include MCPfarm, rate-limiter backend), then drives the install. ~30-45 minutes end-to-end.
+First drop three binary artifacts from Pinkfish into this directory:
+- `pinkconnect-<version>.tar.gz` — PinkConnect container image
+- `mcpfarm-<version>.tar.gz` — MCPfarm container image (skip if you don't need MCP)
+- `pinkfish-connections-admin-app-main.zip` — the admin app
 
-To drive it yourself instead of through Claude, [`install.md`](./install.md) is a self-contained runbook.
+Then pick how you want to install:
+
+### Option A — let Claude drive it (recommended)
+
+Open this repo in a Claude Code session and paste:
+
+> *Install PinkConnect + MCPfarm following claude-setup.md.*
+
+Claude reads [`claude-setup.md`](./claude-setup.md) — its instructions for how to drive the install — and asks you 6 things up front (AWS profile, region, domain, install profile, include MCPfarm, rate-limiter backend). Then it walks through [`install.md`](./install.md) step by step, runs the commands, watches outputs, and surfaces failures. ~30-45 minutes end-to-end.
+
+### Option B — run it yourself
+
+Open [`install.md`](./install.md) and execute the commands top-to-bottom. Same install path, just without Claude as a typist. ~30-45 minutes.
+
+Both options end at the same place. Claude is just a wrapper that follows the same runbook.
 
 ---
 
@@ -25,9 +36,9 @@ To drive it yourself instead of through Claude, [`install.md`](./install.md) is 
 
 | File | Purpose |
 |---|---|
-| [`install.md`](./install.md) | **The install runbook.** Self-contained — start to finish. |
+| [`install.md`](./install.md) | **The install runbook.** The single source of truth for how to install — Claude follows it, humans follow it. |
 | [`teardown.md`](./teardown.md) | Delete everything when you're done. |
-| [`claude-setup.md`](./claude-setup.md) | Orchestrator entry for Claude (decision tree, ask-the-human, phase ordering). |
+| [`claude-setup.md`](./claude-setup.md) | *For Claude only* — orchestrator instructions (questions to ask the human, phase ordering, success criteria). You shouldn't need to open this; Claude does. |
 | [`VERSION`](./VERSION) + [`RELEASE-NOTES.md`](./RELEASE-NOTES.md) | Which bundle version this is and what's in it. |
 | [`docs/`](./docs/) | Reference docs the install + teardown point at when you need detail. |
 | [`cloudformation/`](./cloudformation/) | CFN templates the install deploys. |
