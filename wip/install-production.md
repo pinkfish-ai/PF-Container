@@ -35,11 +35,48 @@ these exist — the deploy commands reference them by ARN.
 
 | Prerequisite | Why | How to create |
 |---|---|---|
-| **Customer-managed KMS CMK in deploy region** | BYOK at rest for SSM SecureStrings (operator-encrypted with `--key-id`) and DocDB cluster storage. **Does not yet cover per-connection Secrets Manager entries** — those still use the account's `aws/secretsmanager` AWS-managed key because the container's secret-manager module doesn't pass `KmsKeyId` on `CreateSecret` (gap tracked in PIN-6349). | `aws kms create-key --description "pinkconnect-prod" --region "$AWS_REGION" --profile "$AWS_PROFILE"` — capture the `KeyId` (or alias) and resolve to ARN. |
+| **Customer-managed KMS CMK in deploy region** | BYOK at rest for SSM SecureStrings (operator-encrypted with `--key-id`), DocDB cluster storage, and the ECS CloudWatch log groups. **Does not yet cover per-connection Secrets Manager entries** — those still use the account's `aws/secretsmanager` AWS-managed key because the container's secret-manager module doesn't pass `KmsKeyId` on `CreateSecret` (gap tracked in PIN-6349). | `aws kms create-key --description "pinkconnect-prod" --region "$AWS_REGION" --profile "$AWS_PROFILE"` — capture the `KeyId` (or alias) and resolve to ARN. **Then attach a key policy** that allows `logs.<region>.amazonaws.com` (so CloudWatch Logs can encrypt the `/ecs/*` log groups) and `backup.amazonaws.com` (so AWS Backup can encrypt recovery points). The default `kms:*` to root is **not** sufficient — Logs and Backup are service principals; their access must be granted via the key policy, not IAM. See the [snippet below the table](#kms-key-policy) for the exact policy JSON. |
 | **WAFv2 regional Web ACL in deploy region** | Inputs `WebAclArn` on the ECS stack; protects the ALB. At minimum: rate-based rule + AWSManagedRulesCommonRuleSet | Console (WAF & Shield → Web ACLs → Create) or `aws wafv2 create-web-acl --scope REGIONAL --region "$AWS_REGION"` |
 | **Wildcard ACM cert in `us-east-1`** | One cert covers: CloudFront viewer cert (must be us-east-1), and the ALB cert if you're deploying in us-east-1 too | `aws acm request-certificate --domain-name "*.example.com" --validation-method DNS --region us-east-1 --profile "$AWS_PROFILE"` — insert validation CNAME, wait for ISSUED |
-| **AWS Backup destination vault in a different region** | Cross-region copy target | If you want the cross-region copy to also be BYOK-encrypted, create a CMK in the destination region first (`aws kms create-key --region us-west-2 --profile "$AWS_PROFILE"`) and pass its ARN as `--encryption-key-arn` below: `aws backup create-backup-vault --backup-vault-name pinkconnect-prod-dr --encryption-key-arn <dest-region-cmk-arn> --region us-west-2 --profile "$AWS_PROFILE"`. Without `--encryption-key-arn` the vault uses the destination region's `aws/backup` AWS-managed key, so the copied recovery point is **not** BYOK-encrypted even though the source DocDB cluster is. Acceptable for many threat models; document the choice for your compliance team. |
+| **AWS Backup destination vault in a different region** | Cross-region copy target | If you want the cross-region copy to also be BYOK-encrypted, create a CMK in the destination region first (`aws kms create-key --region us-west-2 --profile "$AWS_PROFILE"`) and apply the same key-policy snippet (the dest-region CMK only needs the `backup.amazonaws.com` statement — no Logs principal needed since no log groups live in the dest region). Then create the vault with that CMK: `aws backup create-backup-vault --backup-vault-name pinkconnect-prod-dr --encryption-key-arn <dest-region-cmk-arn> --region us-west-2 --profile "$AWS_PROFILE"`. Without `--encryption-key-arn` the vault uses the destination region's `aws/backup` AWS-managed key, so the copied recovery point is **not** BYOK-encrypted even though the source DocDB cluster is. Acceptable for many threat models; document the choice for your compliance team. |
 | **Separate AWS account from any non-prod environment** | Blast-radius separation | Best practice — out of scope for this doc |
+
+### KMS key policy
+
+After creating the CMK above, replace its default key policy with one that explicitly allows the AWS services that consume it. Save to `kms-policy.json` and apply with `aws kms put-key-policy --key-id <key-id> --policy-name default --policy file://kms-policy.json --region "$AWS_REGION" --profile "$AWS_PROFILE"`.
+
+```json
+{
+  "Version": "2012-10-17",
+  "Id": "pinkconnect-prod-cmk",
+  "Statement": [
+    {
+      "Sid": "EnableRootAdmin",
+      "Effect": "Allow",
+      "Principal": {"AWS": "arn:aws:iam::<account>:root"},
+      "Action": "kms:*",
+      "Resource": "*"
+    },
+    {
+      "Sid": "AllowCloudWatchLogs",
+      "Effect": "Allow",
+      "Principal": {"Service": "logs.<region>.amazonaws.com"},
+      "Action": ["kms:Encrypt", "kms:Decrypt", "kms:ReEncrypt*", "kms:GenerateDataKey*", "kms:DescribeKey"],
+      "Resource": "*",
+      "Condition": {"ArnLike": {"kms:EncryptionContext:aws:logs:arn": "arn:aws:logs:<region>:<account>:log-group:/ecs/*"}}
+    },
+    {
+      "Sid": "AllowBackupService",
+      "Effect": "Allow",
+      "Principal": {"Service": "backup.amazonaws.com"},
+      "Action": ["kms:Encrypt", "kms:Decrypt", "kms:ReEncrypt*", "kms:GenerateDataKey*", "kms:DescribeKey", "kms:CreateGrant"],
+      "Resource": "*"
+    }
+  ]
+}
+```
+
+The `ArnLike` condition scopes the Logs grant to `/ecs/*` groups only — that's where both PinkConnect and MCPfarm write. If you also want the dest-region CMK BYOK, save a copy with only the `AllowBackupService` statement and apply to the dest-region CMK.
 
 Set up env at the top of the session:
 
@@ -163,6 +200,12 @@ SecureStrings via the `--key-id` flag.)
 unzip -o pinkfish-connections-admin-app-main.zip -d .
 cd pinkfish-connections-admin-app-main
 npm install
+# keygen refuses to overwrite if keys/ already has files (e.g. from a
+# prior install or smoke run) — clear them first if you want a fresh
+# production keypair. The customer-facing app must sign JWTs with the
+# matching private.pem, so regen here implies coordinating the new
+# public key into your app's signing setup.
+rm -f keys/private.pem keys/public.pem
 npm run keygen
 cd ..
 
