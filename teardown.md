@@ -90,7 +90,7 @@ aws secretsmanager list-secrets --region "$AWS_REGION" --profile "$AWS_PROFILE" 
 
 Production uses `-prod`-suffixed stack names and `/pinkconnect-prod/`
 SSM prefix + `pinkconnect-prod/` Secrets Manager prefix (matching what
-`install-production.md` deploys). It also has two optional stacks (CDN
+`wip/install-production.md` deploys). It also has two optional stacks (CDN
 + backup) that must come down before the ECS stack.
 
 ```bash

@@ -17,8 +17,8 @@ parameter points at PinkConnect's ALB.
 
 If a human is reading this directly: the human-facing overview is in
 [`README.md`](./README.md). The step-by-step install runbooks are
-[`install-smoke.md`](./install-smoke.md) and
-[`install-production.md`](./install-production.md). PinkConnect lives
+[`install.md`](./install.md) and
+[`wip/install-production.md`](./wip/install-production.md). PinkConnect lives
 in §1–§8 of each runbook; MCPfarm lives in §9.
 
 ---
@@ -51,18 +51,18 @@ in §1–§8 of each runbook; MCPfarm lives in §9.
    available: `elasticache`, `dynamodb` — pick those only if you're
    customizing further." Their answer determines `RateLimiterBackend`
    in phase 10d's CFN deploy. If `upstash`, also drive the Upstash
-   signup + SSM puts before the deploy (see install-smoke §9.3).
+   signup + SSM puts before the deploy (see install.md §9.3).
 
 ### 2. Decide which install doc to follow
 
 | Customer answer | Follow | Use case |
 |---|---|---|
-| **Smoke** | [`install-smoke.md`](./install-smoke.md) | Single-AZ, no WAF, no CDN, no cross-region backup. Validate the install works on the customer's AWS, then either keep running for dev or tear down. |
-| **Production** | [`install-production.md`](./install-production.md) | Multi-AZ DocDB, redundant NAT, VPC endpoints, WAF on the ALB, BYOK CMK, 365-day logs, 35-day backup retention with cross-region copy, CloudFront in front of the ALB. Customer-facing service. Has prerequisites the human pre-creates (see install-production.md § "Production prerequisites"). |
+| **Smoke** (default — the primary path) | [`install.md`](./install.md) | Single-AZ, no WAF, no CDN, no cross-region backup. Self-contained doc — drive the install end-to-end from it. |
+| **Production** (WIP — not customer-ready yet) | [`wip/install-production.md`](./wip/install-production.md) | Multi-AZ DocDB, redundant NAT, VPC endpoints, WAF, BYOK CMK, 365-day logs, 35-day backup retention with cross-region copy, CloudFront. **Currently work-in-progress** — gaps caught during validation, hasn't been re-tested end-to-end against bundle v0.2.0. If the human asks for production, walk them through it but flag at the top that they should consult Pinkfish before relying on it. |
 
-Drive the install end-to-end from whichever install doc the human
-picked. The doc is self-contained — you don't need to merge content
-from multiple files.
+For 99% of installs, you'll be following `install.md`. Production is
+parked in `wip/` until it's been validated end-to-end the way smoke
+has.
 
 ### 3. Confirm binary artifacts are on disk
 
@@ -84,11 +84,11 @@ and the install can't proceed without them.
 
 ### 4. Read these before deploying
 
-- [`gotchas.md`](./gotchas.md) — non-obvious behaviors that bite mid-install. Read in full before starting step 1.
-- [`troubleshooting.md`](./troubleshooting.md) — symptom → cause+fix when something breaks during/after install.
-- [`parameter-reference.md`](./parameter-reference.md) — what every CFN parameter does. Reference when you need to know what a flag means.
+- [`docs/gotchas.md`](./docs/gotchas.md) — non-obvious behaviors that bite mid-install. Read in full before starting step 1.
+- [`docs/troubleshooting.md`](./docs/troubleshooting.md) — symptom → cause+fix when something breaks during/after install.
+- [`docs/parameter-reference.md`](./docs/parameter-reference.md) — what every CFN parameter does. Reference when you need to know what a flag means.
 - [`teardown.md`](./teardown.md) — delete-everything sequence for when the customer's done.
-- [`alternate-components.md`](./alternate-components.md) — swap-out playbook (Atlas instead of DocDB, EKS instead of Fargate, Cloudflare instead of CloudFront, etc.). Only relevant if the human asks "can we use X instead of Y?"
+- [`docs/alternate-components.md`](./docs/alternate-components.md) — swap-out playbook (Atlas instead of DocDB, EKS instead of Fargate, Cloudflare instead of CloudFront, etc.). Only relevant if the human asks "can we use X instead of Y?"
 
 ### 5. Phase ordering and parallelization (both profiles)
 
@@ -144,7 +144,7 @@ Same shape for smoke and production; production adds two extra stacks
 Read these in order:
 
 1. The error message itself. AWS errors usually name the resource and the failure mode.
-2. [`troubleshooting.md`](./troubleshooting.md). Look up the symptom.
+2. [`docs/troubleshooting.md`](./docs/troubleshooting.md). Look up the symptom.
 3. CloudWatch log group `/ecs/<env>` for the structured `mcp.server.config.invalid` line — single most useful signal when `/health/ready` is stuck at 503.
 4. The CFN template itself (they're short, ~100–400 lines each).
 5. As a last resort, tell the human and surface a specific question.

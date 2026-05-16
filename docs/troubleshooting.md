@@ -6,7 +6,7 @@ worth knowing in advance, see `gotchas.md`.
 
 | Symptom | Cause + fix |
 |---|---|
-| Stack stuck `CREATE_IN_PROGRESS` on `Service` for ~15 min, then rolls back | The SG wire-up didn't happen during the ECS deploy window. See the SG step in `install-smoke.md` / `install-production.md` — authorize while the deploy is still running, not after. |
+| Stack stuck `CREATE_IN_PROGRESS` on `Service` for ~15 min, then rolls back | The SG wire-up didn't happen during the ECS deploy window. See the SG step in `../install.md` / `../wip/install-production.md` — authorize while the deploy is still running, not after. |
 | `ResourceInitializationError: invalid ssm parameters: /pinkconnect/...` | Missing SSM param or task exec role can't decrypt. Re-run the matching `put-parameter` step from the install doc; ECS auto-recovers on its next launch attempt. |
 | Container restart loop, log shows `Missing required environment variables` or `mcp.server.config.invalid` | Same root cause as above; the structured `mcp.server.config.invalid` line lists every missing env var. |
 | `MongoServerSelectionError` / connect timeout from container logs | Task SG isn't authorized on the DocDB SG. Re-run the `authorize-security-group-ingress` step. |

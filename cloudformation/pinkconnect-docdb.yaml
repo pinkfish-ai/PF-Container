@@ -5,7 +5,7 @@ Description: >
   or 3 (+ a larger InstanceClass) for production multi-AZ topology.
   After the ecs stack is deployed, authorize the ECS task SG as ingress
   on DocDbSecurityGroupId port 27017 (one-time CLI command — see the
-  "Deploy ECS" section of install-smoke.md or install-production.md).
+  "Deploy ECS" section of install.md or wip/install-production.md).
 
 Parameters:
   EnvironmentName:

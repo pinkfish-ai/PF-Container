@@ -1,183 +1,88 @@
-# PinkConnect — Self-Host
+# PinkConnect + MCPfarm — Self-Host
 
-PinkConnect deployed to your own AWS account.
+Run the Pinkfish stack inside your own infrastructure — your AWS account, your IAM, your encryption keys, your network boundary. **15,783 MCP tools across 344 SaaS integrations**, all behind a single ECS service you control.
 
-**Current bundle version:** see [`VERSION`](./VERSION) (currently `0.2.0`).
-**What changed:** see [`RELEASE-NOTES.md`](./RELEASE-NOTES.md).
+**Current bundle version:** see [`VERSION`](./VERSION) — currently `0.2.0`.
+**What changed since 0.1.0:** [`RELEASE-NOTES.md`](./RELEASE-NOTES.md).
 
-## Pick a profile
+---
 
-| Profile | Use case | Install doc |
-|---|---|---|
-| **Smoke** | Validate the install works on your AWS. Single-AZ DocDB, single NAT, default IAM, no WAF/CDN/cross-region-backup. Throwaway or dev-only. ~30 min to deploy. | [`install-smoke.md`](./install-smoke.md) |
-| **Production** | Customer-facing service. Multi-AZ DocDB, redundant NAT, VPC endpoints, WAF, BYOK CMK, CloudFront in front of the ALB, AWS Backup with cross-region copy, 365-day log retention. ~45 min to deploy. Has prerequisites the human pre-creates (CMK, WAF Web ACL, wildcard cert, dest backup vault). | [`install-production.md`](./install-production.md) |
+## Quick start
 
-Recommended path: smoke first to validate everything works on your
-AWS, then tear it down and install production fresh.
+1. Drop three binary artifacts from Pinkfish into this directory:
+   - `pinkconnect-<version>.tar.gz` — PinkConnect container image
+   - `mcpfarm-<version>.tar.gz` — MCPfarm container image (skip if you don't need MCP)
+   - `pinkfish-connections-admin-app-main.zip` — the admin app
+2. Open this repo in a Claude Code session and tell it:
+   > *"Install PinkConnect + MCPfarm into my AWS account following claude-setup.md."*
+3. Claude asks you 6 things (AWS profile, region, domain, install profile, include MCPfarm, rate-limiter backend), then drives the install. ~30-45 minutes end-to-end.
 
-## Install
+To drive it yourself instead of through Claude, [`install.md`](./install.md) is a self-contained runbook.
 
-The install is orchestrated by Claude. Drop this repo into a Claude
-Code session and tell it:
+---
 
-> *"Install PinkConnect into my AWS account following claude-setup.md."*
-
-Claude will ask four up-front questions (AWS profile, region, domain,
-**smoke or production**), then drive the AWS commands itself.
-
-**Before starting,** you need:
-
-- An AWS account with admin access, and an AWS CLI profile for it.
-- A domain in Route53 in that account (PinkConnect lives on a
-  subdomain — e.g. `connect.example.com` for smoke or
-  `prod.example.com` for production).
-- Three binary artifacts from Pinkfish, dropped into the repo root:
-  - `pinkconnect-<version>.tar.gz` — PinkConnect container image
-  - `mcpfarm-<version>.tar.gz` — MCPfarm container image *(added in bundle v0.2.0; optional — skip if you don't need the MCP layer)*
-  - `pinkfish-connections-admin-app-main.zip` — the admin app
-
-  Each artifact's filename carries its own version. The bundle version
-  in [`VERSION`](./VERSION) pins which versions of these go together —
-  use it when telling Pinkfish support what release you're on.
-
-  Contact Pinkfish to get them if you don't have them already.
-- *(Production only)* a few extra prerequisites enumerated in
-  [`install-production.md`](./install-production.md): customer-managed
-  KMS CMK, WAFv2 Web ACL, wildcard ACM cert in us-east-1, AWS Backup
-  destination vault in a second region.
-
-If you'd rather drive the install yourself rather than through Claude,
-the install-*.md files are working human-readable docs too — they're
-just dense.
-
-## Reference docs
+## What's here
 
 | File | Purpose |
 |---|---|
-| [`install-smoke.md`](./install-smoke.md) | Smoke install walkthrough (cheap, single-AZ) |
-| [`install-production.md`](./install-production.md) | Production install walkthrough (multi-AZ, hardened) |
-| [`claude-setup.md`](./claude-setup.md) | Orchestrator entry for Claude (decision tree, ask-the-human, phase ordering) |
-| [`gotchas.md`](./gotchas.md) | Non-obvious behaviors to know **before** deploying |
-| [`troubleshooting.md`](./troubleshooting.md) | Symptom → cause+fix when something breaks |
-| [`teardown.md`](./teardown.md) | Delete everything when done |
-| [`parameter-reference.md`](./parameter-reference.md) | What every CFN parameter does |
-| [`alternate-components.md`](./alternate-components.md) | Swap-out playbook (Atlas instead of DocDB, EKS instead of Fargate, Cloudflare instead of CloudFront, etc.) |
+| [`install.md`](./install.md) | **The install runbook.** Self-contained — start to finish. |
+| [`teardown.md`](./teardown.md) | Delete everything when you're done. |
+| [`claude-setup.md`](./claude-setup.md) | Orchestrator entry for Claude (decision tree, ask-the-human, phase ordering). |
+| [`VERSION`](./VERSION) + [`RELEASE-NOTES.md`](./RELEASE-NOTES.md) | Which bundle version this is and what's in it. |
+| [`docs/`](./docs/) | Reference docs the install + teardown point at when you need detail. |
+| [`cloudformation/`](./cloudformation/) | CFN templates the install deploys. |
+| [`wip/`](./wip/) | Production install profile — work-in-progress, not customer-ready yet. Contact Pinkfish if you need it. |
+
+### `docs/`
+
+| File | Purpose |
+|---|---|
+| [`docs/gotchas.md`](./docs/gotchas.md) | Non-obvious behaviors. **Read before deploying**, especially "SG wire-up timing". |
+| [`docs/troubleshooting.md`](./docs/troubleshooting.md) | Symptom → cause + fix when something breaks. |
+| [`docs/parameter-reference.md`](./docs/parameter-reference.md) | What every CFN parameter means. |
+| [`docs/alternate-components.md`](./docs/alternate-components.md) | Swap-out playbook (Atlas instead of DocDB, EKS instead of Fargate, Cloudflare instead of CloudFront). |
+
+---
+
+## Before starting
+
+- **AWS account** with admin access and an AWS CLI profile for it.
+- **A domain** in Route53 in that account. PinkConnect lives on a subdomain (`connect.<your-domain>`); MCPfarm on another (`mcp.<your-domain>`). They must share the same Route53 hosted zone.
+- **Docker** (Desktop or engine) — used once to load the tarballs and push to ECR.
+- **AWS CLI v2**, configured. Verify with `aws sts get-caller-identity --profile <name>`.
+
+---
 
 ## Verify it's running
 
-When the install finishes, PinkConnect responds on the domain you
-chose. One curl confirms everything is up:
+When the install finishes, both services respond on their domains. One curl per layer confirms everything is up:
 
 ```bash
 curl -i https://connect.<your-domain>/health/ready
+# HTTP/2 200  {"status":"ready"}
+
+curl -i https://mcp.<your-domain>/health/live
+# HTTP/2 200  {"status":"live", ...}
 ```
 
-Expected:
-
-```
-HTTP/2 200
-content-type: application/json; charset=utf-8
-
-{"status":"ready"}
-```
-
-- **200 `ready`** — service is up, MongoDB reachable, all secrets
-  resolved. You're done.
-- **503** — the container started but a config value is missing.
-  Check the `/ecs/pinkconnect` CloudWatch log group for the
-  `mcp.server.config.invalid` line, which lists exactly what's wrong.
-- **DNS doesn't resolve** — the ACM cert or Route53 A-alias didn't
-  land. Re-check the ACM cert + Route53 steps of your chosen install
-  doc, or ask Claude to diagnose. See also
-  [`troubleshooting.md`](./troubleshooting.md).
-
-## Make a proxy call
-
-Assuming you've followed the smoke-test step in your install doc to
-deploy the `openweather` service and create a connection with your
-API key, this is how you hit the real API through PinkConnect:
-
-### 1. Mint a JWT
-
-PinkConnect verifies user JWTs signed by the keypair you generated
-during install. The bundled admin app already has `jsonwebtoken`
-installed, so the cheapest mint is a node one-liner from inside that
-directory:
+Listing the catalog (with a JWT minted by the admin app) returns 812 MCP servers across the local + remote split:
 
 ```bash
-TOKEN=$(cd pinkfish-connections-admin-app-main && node -e "
-const jwt = require('jsonwebtoken');
-const fs = require('fs');
-const key = fs.readFileSync('keys/private.pem');
-console.log(jwt.sign(
-  { type: 'user', providerId: 'local-dev-user', selectedOrg: 'local-dev-org' },
-  key,
-  { algorithm: 'RS256', expiresIn: '1h' }
-));
-")
-echo "$TOKEN"
+TOKEN=$(curl -s http://localhost:3000/api/debug/jwt | jq -r .token)
+curl -sH "Authorization: Bearer $TOKEN" \
+  "https://mcp.<your-domain>/catalog?includeChildren=true" | jq 'length'
+# 812
 ```
 
-**About `providerId` and `selectedOrg`.** These are the multi-tenant
-identity claims PinkConnect uses to scope every connection. Think of
-them as the user identifier and the org/tenant they belong to — every
-connection record in the database is owned by a `(selectedOrg,
-providerId)` pair, and the proxy only returns connections that match
-the claims in the JWT you present.
-
-In production these come from your own auth system: when an end user
-in org `acme-co` named user `u_42` opens your app, you mint a JWT with
-`selectedOrg: "acme-co", providerId: "u_42"`, and from then on every
-connection that user creates belongs to that pair. Another user in the
-same org has a different `providerId` and sees a different set of
-connections; a user in a different org sees nothing of acme-co's.
-
-In this smoke test those values are hardcoded as `local-dev-user` /
-`local-dev-org` (the defaults the admin app ships with in
-`.env.example`), so the connection you created during the install's
-smoke-test step belongs to that pair. If you change them in the JWT
-you mint, PinkConnect treats you as a different user and
-`/manage/user-connections` returns an empty list — your connection
-is still there, just owned by the other identity. Match the values
-you used when creating the connection.
-
-### 2. Find the connection ID
+A real upstream call through PinkConnect (after creating an OpenWeather connection per [`install.md`](./install.md) §8):
 
 ```bash
-curl -s -H "auth-token: $TOKEN" \
-  https://connect.<your-domain>/manage/user-connections | jq
+curl "http://localhost:3000/api/proxy/openweather/${CONN_ID}/data/2.5/weather?lat=44.34&lon=10.99" | jq
+# 200 with real OpenWeather JSON wrapped in {"output": {...}}
 ```
 
-Returns an array; grab the `id` for your openweather connection (it
-also shows `identifier` like `0786eb07****` so you can tell which key
-it is).
-
-### 3. Make the proxy call
-
-PinkConnect's proxy URL pattern is:
-
-```
-GET https://connect.<your-domain>/connect/<service_key>/<connection_id>/<upstream-path>
-```
-
-For OpenWeather:
-
-```bash
-CONN_ID=<from step 2>
-curl -s -H "auth-token: $TOKEN" \
-  "https://connect.<your-domain>/connect/openweather/${CONN_ID}/data/2.5/weather?lat=44.34&lon=10.99" \
-  | jq
-```
-
-Expected: a real OpenWeather JSON response (`{"coord":{...},"weather":[...],"main":{"temp":...}}`).
-PinkConnect decrypted your stored API key, injected it as `appid` on
-the upstream request per the openweather service definition, and
-returned the response.
-
-The same pattern works for every service in the catalog — swap
-`openweather` for the `service_key` and the path for whatever that
-provider exposes.
+---
 
 ## Support
 
-Contact Pinkfish for support, binary deliveries, and license questions.
+Contact Pinkfish for binary deliveries, install help, and license questions.

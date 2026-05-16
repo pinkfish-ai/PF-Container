@@ -12,9 +12,9 @@ the Route53 hosted zone persists.
 for DocumentDB (~8 min) and the ALB (~5 min) to provision.
 
 **Reference docs to keep open while doing this install:**
-- [`gotchas.md`](./gotchas.md) — read first, especially "SG wire-up timing"
-- [`troubleshooting.md`](./troubleshooting.md) — for when something breaks
-- [`parameter-reference.md`](./parameter-reference.md) — what every CFN param means
+- [`docs/docs/gotchas.md`](./docs/docs/gotchas.md) — read first, especially "SG wire-up timing"
+- [`docs/troubleshooting.md`](./docs/troubleshooting.md) — for when something breaks
+- [`docs/parameter-reference.md`](./docs/parameter-reference.md) — what every CFN param means
 - [`teardown.md`](./teardown.md) — when you're done
 
 ---
@@ -153,7 +153,7 @@ put /pinkconnect/jwt-public-key       "$(cat pinkfish-connections-admin-app-main
 
 **Treat `oauth-encryption-key` and `token-encryption-key` like a
 database master password** — losing them makes every stored
-per-connection credential unrecoverable. See `gotchas.md`.
+per-connection credential unrecoverable. See `docs/docs/gotchas.md`.
 
 ---
 
@@ -194,7 +194,7 @@ and waits ~15 min for the first task to be healthy; if the task SG
 isn't authorized on the docdb SG within that window, the task fails
 its health check and the stack rolls back. Fix: start the deploy in
 the background, poll for the task SG to appear, authorize it
-immediately. See `gotchas.md` if you want the full story.
+immediately. See `docs/docs/gotchas.md` if you want the full story.
 
 ```bash
 HOSTED_ZONE_ID=$(aws route53 list-hosted-zones --profile "$AWS_PROFILE" \
@@ -286,7 +286,7 @@ curl -X POST "http://localhost:3000/api/admin/services/openweather/deploy" \
 ```
 
 Create a user-connection. **For API-key services, the key goes in
-`custom_fields`, not `credentials`** (see `gotchas.md`):
+`custom_fields`, not `credentials`** (see `docs/docs/gotchas.md`):
 
 ```bash
 curl -X POST "http://localhost:3000/api/connections/core/openweather" \
@@ -439,7 +439,7 @@ JWT=$(curl -s http://localhost:3000/api/debug/jwt | jq -r .token)
 # carries the providerId + selectedOrg claims from .env, and is verified
 # by MCPfarm against /pinkconnect/jwt-public-key. If you want to sign
 # JWTs from your own application instead, see the JWT signing notes in
-# gotchas.md — the smoke doesn't require a specific issuer.)
+# docs/gotchas.md — the smoke doesn't require a specific issuer.)
 
 PCID='<connection_id from §8>'   # the OpenWeather connection
 
