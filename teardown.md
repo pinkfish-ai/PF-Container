@@ -90,11 +90,17 @@ aws secretsmanager list-secrets --region "$AWS_REGION" --profile "$AWS_PROFILE" 
 
 Production uses `-prod`-suffixed stack names and `/pinkconnect-prod/`
 SSM prefix + `pinkconnect-prod/` Secrets Manager prefix (matching what
-`wip/install-production.md` deploys). It also has two optional stacks (CDN
-+ backup) that must come down before the ECS stack.
+`wip/install-production.md` deploys). It has three optional stacks (CDN,
+backup, mcpfarm) — all must come down before the PinkConnect ECS stack.
 
 ```bash
-# Optional production stacks first.
+# Optional MCPfarm stack first — its ConnectUrl references pinkconnect-ecs-prod
+aws cloudformation delete-stack --stack-name mcpfarm-ecs-prod \
+  --region "$AWS_REGION" --profile "$AWS_PROFILE" 2>/dev/null || true
+aws cloudformation wait stack-delete-complete --stack-name mcpfarm-ecs-prod \
+  --region "$AWS_REGION" --profile "$AWS_PROFILE" 2>/dev/null || true
+
+# Other optional production stacks (CDN, backup).
 aws cloudformation delete-stack --stack-name pinkconnect-cdn-prod \
   --region "$AWS_REGION" --profile "$AWS_PROFILE"
 aws cloudformation delete-stack --stack-name pinkconnect-backup-prod \
@@ -126,6 +132,19 @@ aws cloudformation delete-stack --stack-name pinkconnect-ecs-prod \
   --region "$AWS_REGION" --profile "$AWS_PROFILE"
 aws cloudformation wait stack-delete-complete --stack-name pinkconnect-ecs-prod \
   --region "$AWS_REGION" --profile "$AWS_PROFILE"
+
+# OPTIONAL: take a manual final snapshot before deleting the cluster.
+# The DocDB template ships with DeletionPolicy: Delete (same as smoke),
+# so the stack delete will NOT auto-create a final snapshot — make one
+# yourself if you want a point-in-time you can restore from after
+# teardown. AWS Backup recovery points (from the backup stack) cover
+# scheduled backups, but the most recent one may be up to 24h stale.
+SNAP_ID="pinkconnect-prod-final-$(date -u +%Y%m%d-%H%M)"
+aws docdb create-db-cluster-snapshot \
+  --db-cluster-identifier pinkconnect-prod-docdb \
+  --db-cluster-snapshot-identifier "$SNAP_ID" \
+  --region "$AWS_REGION" --profile "$AWS_PROFILE" 2>/dev/null || true
+echo "Final snapshot: $SNAP_ID (delete with aws docdb delete-db-cluster-snapshot when you're sure you don't need it)"
 
 # DocDB cluster has DeletionProtection=true (production install sets
 # this so the cluster cannot be accidentally deleted). Disable it
@@ -189,14 +208,16 @@ commands.
   copy). You created this manually outside any stack. Delete with
   `aws backup delete-backup-vault --backup-vault-name <name> --region <dest-region>`
   after clearing recovery points.
-- **The DocDB final snapshot** *(production only)*. The smoke profile's
-  `pinkconnect-docdb.yaml` ships with `DeletionPolicy: Delete` — no
-  final snapshot is taken on tear-down, so there's nothing to clean up.
-  Production overrides to `Snapshot`; in that case `delete-stack`
-  takes one last snapshot named
-  `<DBClusterIdentifier>-final-snapshot-<timestamp>`. List with
-  `aws docdb describe-db-cluster-snapshots`; delete with
-  `aws docdb delete-db-cluster-snapshot`.
+- **Manual DocDB snapshot** *(production only, if you took one)*. The
+  template ships with `DeletionPolicy: Delete` for both profiles —
+  stack-delete will NOT auto-create a final snapshot. The production
+  teardown above takes one manually (named
+  `pinkconnect-prod-final-<timestamp>`); list with
+  `aws docdb describe-db-cluster-snapshots`, delete with
+  `aws docdb delete-db-cluster-snapshot` once you're sure you don't
+  need it. Continuous-backup recovery via AWS Backup (35-day retention
+  + cross-region copy) is the production durability story; the manual
+  snapshot just captures the final post-teardown moment.
 - **The ECR repos + images.** Both the `pinkconnect` repo (created
   in §1 of the install) and the `mcpfarm` repo (created in §9.1 if
   you deployed MCPfarm) are outside CFN. Clean up both:
