@@ -128,6 +128,12 @@ export DOCDB_SG=$(db DocDbSecurityGroupId)
 unzip -o pinkfish-connections-admin-app-main.zip -d .
 cd pinkfish-connections-admin-app-main
 npm install
+# keygen refuses to overwrite existing keys/. If you're re-running the
+# install (or the admin app dir was unpacked previously), clear them
+# first — but only if you actually want a fresh keypair. The customer
+# app must sign JWTs with the matching private.pem; regen here means
+# coordinating the new public key into your app.
+rm -f keys/private.pem keys/public.pem
 npm run keygen           # writes keys/private.pem + keys/public.pem
 cd ..
 ```
