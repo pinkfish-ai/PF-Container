@@ -1,14 +1,24 @@
-# PinkConnect — Production Install (multi-AZ) — **WIP**
+# PinkConnect + MCPfarm — Production Install (multi-AZ)
 
-> **⚠️ Work in progress.** This runbook hasn't been re-validated end-to-end against bundle v0.2.0. It worked for bundle 0.1.0 but may have gaps (stale parameter names, missing MCPfarm section, untested CFN params). The [smoke install](../install.md) is the validated, customer-ready path. Use this only if you specifically need the production hardening features below — and contact Pinkfish (pf-support@pinkfish.ai) first to confirm we'll back you up while you go through it.
+> **⚠️ Pre-production / validate before going live.** This runbook is
+> the production-hardening profile — multi-AZ, BYOK encryption, WAF,
+> CloudFront, cross-region backup, autoscaling. It's been written
+> against bundle v0.2.0 (PinkConnect §1-§11 and MCPfarm §12 both
+> covered) but has **not** been re-run end-to-end on a fresh AWS
+> account in this revision. Use it as your production recipe, but
+> sanity-check it against your own AWS environment first and contact
+> Pinkfish (pf-support@pinkfish.ai) if you hit something unexpected.
+> The [smoke install](../install.md) is the daily-driven, fully
+> validated path; this is the harder-hat sibling.
 
 Production-grade deploy: multi-AZ DocDB, redundant NAT, VPC endpoints,
-WAF, BYOK encryption, CloudFront in front of the ALB, AWS Backup with
-cross-region copy. Fully redundant.
+WAF on both PinkConnect and MCPfarm ALBs, BYOK encryption, CloudFront
+in front of the PinkConnect ALB, AWS Backup with cross-region copy,
+autoscaling on both ECS services. Fully redundant.
 
-**Time to deploy:** ~45 minutes end-to-end (a bit longer than smoke
-because CloudFront propagation takes ~10 min and there are 2 extra
-stacks). Most of that's waiting; commands themselves are fast.
+**Time to deploy:** ~60 minutes end-to-end (PinkConnect ~45 min;
+MCPfarm adds another ~10-15). Most of that's waiting for CloudFront
+propagation + DocDB; commands themselves are fast.
 
 **Read this before starting:**
 - [`../docs/gotchas.md`](../docs/gotchas.md) — especially "SG wire-up timing", "CDN ↔ ECS DNS coordination", "CloudFront certs must be in us-east-1"
@@ -462,18 +472,189 @@ curl "http://localhost:3000/api/proxy/openweather/${CONN_ID}/data/2.5/weather?la
 
 ---
 
+## 12. Deploy MCPfarm — hardened, production-grade
+
+MCPfarm is the MCP server layer on top of PinkConnect. Production
+hardening: multi-AZ tasks, autoscaling, WAF on the MCPfarm ALB, BYOK
+KMS on the log group, real rate-limiter backend (Upstash by default
+for prod — `noop` only makes sense for smoke), 365-day log retention.
+
+Skip this section entirely if you only want the PinkConnect credential
+proxy layer.
+
+### 12.1 Push the MCPfarm image
+
+```bash
+MCP_TAG=v0.2.0   # match VERSION + RELEASE-NOTES.md for this bundle
+MCP_REPO=mcpfarm
+MCP_ECR_URI="${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${MCP_REPO}"
+
+aws ecr create-repository --repository-name "$MCP_REPO" \
+  --image-tag-mutability IMMUTABLE \
+  --region "$AWS_REGION" --profile "$AWS_PROFILE" 2>/dev/null || true
+
+docker load -i "mcpfarm-${MCP_TAG}.tar.gz"
+docker tag "pinkfish-ai/mcpfarm:${MCP_TAG}" "${MCP_ECR_URI}:${MCP_TAG}"
+docker push "${MCP_ECR_URI}:${MCP_TAG}"
+```
+
+### 12.2 Cert for the MCPfarm hostname
+
+The prereq us-east-1 wildcard cert (`$CERT_ARN`) covers
+`mcp.example.com` if your zone is `example.com`. If `$AWS_REGION` is
+us-east-1, reuse `$CERT_ARN`. Otherwise issue a wildcard in
+`$AWS_REGION` for the ALB (same shape as §5):
+
+```bash
+# If $AWS_REGION == us-east-1:
+export MCP_CERT_ARN="$CERT_ARN"
+
+# Otherwise:
+export MCP_CERT_ARN=$(aws acm request-certificate \
+  --domain-name "*.${DOMAIN}" \
+  --validation-method DNS \
+  --region "$AWS_REGION" --profile "$AWS_PROFILE" \
+  --query CertificateArn --output text)
+# Insert validation CNAME (same as §5), wait for ISSUED.
+```
+
+### 12.3 Pick a rate-limiter backend
+
+Production should pick a real backend — `noop` (the smoke default)
+disables rate-limiting entirely, which is rarely appropriate for an
+internet-facing MCP layer. Options:
+
+| Backend | When | Setup |
+|---|---|---|
+| `upstash` (recommended) | Default production choice — managed Redis, free tier covers light load, paid tiers scale to millions of req/day | Sign up at https://upstash.com, capture REST URL + token, put into SSM (commands below) |
+| `elasticache` | You already run ElastiCache in this VPC | App-side code in place; CFN secret wiring not yet plumbed in this template — you'll need to add the SSM param refs by hand |
+| `dynamodb` | You prefer a fully serverless backend keyed by AWS | Same status as elasticache — app code yes, CFN wiring no |
+| `noop` | Edge already rate-limits (CloudFront, API Gateway, your own L7 throttle) | None — pick noop in §12.4's deploy params and skip the SSM puts below |
+
+For Upstash:
+
+```bash
+aws ssm put-parameter --region "$AWS_REGION" --profile "$AWS_PROFILE" \
+  --type SecureString --overwrite \
+  --key-id "$KMS_KEY_ARN" \
+  --name /pinkconnect-prod/upstash-ratelimit-redis-url \
+  --value '<your-rest-url>'
+
+aws ssm put-parameter --region "$AWS_REGION" --profile "$AWS_PROFILE" \
+  --type SecureString --overwrite \
+  --key-id "$KMS_KEY_ARN" \
+  --name /pinkconnect-prod/upstash-ratelimit-redis-token \
+  --value '<your-rest-token>'
+```
+
+`/pinkconnect-prod/jwt-public-key` was already populated in §4 —
+MCPfarm shares the same key (so JWTs minted by the customer app verify
+against either service identically).
+
+### 12.4 Deploy `mcpfarm-ecs.yaml` with production hardening
+
+```bash
+MCP_HOST=mcp.${DOMAIN}                       # customer-facing
+RATE_LIMITER_BACKEND=upstash                 # or 'noop' / 'elasticache' / 'dynamodb'
+PINKCONNECT_URL=$(aws cloudformation describe-stacks \
+  --stack-name pinkconnect-ecs-prod \
+  --region "$AWS_REGION" --profile "$AWS_PROFILE" \
+  --query "Stacks[0].Outputs[?OutputKey=='PublicUrl'].OutputValue" \
+  --output text)
+
+aws cloudformation deploy \
+  --stack-name mcpfarm-ecs-prod \
+  --region "$AWS_REGION" --profile "$AWS_PROFILE" \
+  --template-file cloudformation/mcpfarm-ecs.yaml \
+  --capabilities CAPABILITY_NAMED_IAM \
+  --parameter-overrides \
+    EnvironmentName=mcpfarm-prod \
+    VpcId="$VPC_ID" \
+    PublicSubnetAId="$PUB_A" PublicSubnetBId="$PUB_B" \
+    PrivateSubnetAId="$PRIV_A" PrivateSubnetBId="$PRIV_B" \
+    ContainerImage="${MCP_ECR_URI}:${MCP_TAG}" \
+    ConnectUrl="$PINKCONNECT_URL" \
+    CustomDomainName="$MCP_HOST" \
+    Route53HostedZoneId="$HOSTED_ZONE_ID" \
+    CertificateArn="$MCP_CERT_ARN" \
+    SsmPrefix=/pinkconnect-prod \
+    DesiredCount=2 \
+    MaxCount=6 \
+    LogRetentionDays=365 \
+    KmsKeyArn="$KMS_KEY_ARN" \
+    WebAclArn="$WEB_ACL_ARN" \
+    RateLimiterBackend="$RATE_LIMITER_BACKEND"
+```
+
+**~8-10 min.** Same parameter pattern as the PinkConnect ECS stack —
+`KmsKeyArn` encrypts the log group; `WebAclArn` attaches your prereq
+WAF Web ACL to the MCPfarm ALB; `DesiredCount=2 / MaxCount=6` runs two
+tasks across AZs and lets ApplicationAutoScaling scale up to six on
+CPU pressure.
+
+### 12.5 Verify
+
+```bash
+curl -sI "https://${MCP_HOST}/health/live"
+# HTTP/2 200
+
+# Catalog (PIN-6414): list all MCP servers the snapshot covers
+TOKEN=$(curl -s http://localhost:3000/api/debug/jwt | jq -r .token)
+curl -sH "Authorization: Bearer $TOKEN" \
+  "https://${MCP_HOST}/catalog?includeChildren=true" | jq 'length'
+# 812 (bundle 0.2.0 — local + remote MCP servers)
+```
+
+### 12.6 End-to-end MCP dispatch smoke
+
+You already created an OpenWeather connection in §11. Use it to prove
+the MCP → PinkConnect → upstream path works in production:
+
+```bash
+CONN_ID='<from §11>'
+TOKEN=$(curl -s http://localhost:3000/api/debug/jwt | jq -r .token)
+
+curl -sS -X POST "https://${MCP_HOST}/dynamic/openweather" \
+  -H "Authorization: Bearer ${TOKEN}" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d "{
+    \"jsonrpc\": \"2.0\",
+    \"id\": 1,
+    \"method\": \"tools/call\",
+    \"params\": {
+      \"name\": \"openweather_get_current_weather\",
+      \"arguments\": { \"PCID\": \"${CONN_ID}\", \"lat\": 51.5074, \"lon\": -0.1278 }
+    }
+  }" | jq '.result.structuredContent | {name, temp_c: (.main.temp - 273.15)}'
+# → London weather (multi-AZ MCPfarm task → PinkConnect ALB → DocDB →
+#    Secrets Manager → real OpenWeather API → back through the chain)
+```
+
+This single curl confirms:
+- ✅ MCPfarm reachable through its production ALB (WAF + multi-AZ)
+- ✅ JWT verifies against the shared SSM signing key
+- ✅ Rate-limit middleware in front (Upstash if you picked it)
+- ✅ MCPfarm dispatches via `$PINKCONNECT_URL`
+- ✅ PinkConnect fetches your encrypted OpenWeather credential
+- ✅ Real upstream call to OpenWeather, response flows back
+
+---
+
 ## Tear down (when no longer needed)
 
-See [`../teardown.md`](../teardown.md). Order: CDN + backup first, then
-ecs, then docdb, then networking. Plus the SSM params under
-`/pinkconnect-prod/*`, the Secrets Manager entries, ACM certs,
-ECR image, destination backup vault.
+See [`../teardown.md`](../teardown.md). Order: **MCPfarm first** (because
+its `ConnectUrl` references PinkConnect's ALB), then CDN + backup
+first, then ecs, then docdb, then networking. Plus the SSM params
+under `/pinkconnect-prod/*`, the Secrets Manager entries, ACM certs,
+ECR images (`pinkconnect` and `mcpfarm`), destination backup vault.
 
 ---
 
 ## Operational notes
 
-- **JWT keypair rotation:** see `../docs/gotchas.md` ("JWT keypair regen requires force-redeploy").
-- **Image upgrades:** push a new tag to ECR, then `aws cloudformation deploy --parameter-overrides ContainerImage=<new-uri>`. ECS rolls the service with the deployment circuit breaker enabled (auto-rollback on bad releases).
-- **Adding more orgs:** PinkConnect partitions by `(selectedOrg, providerId)` claims in the JWT. Your app mints JWTs with whatever `selectedOrg` the user is in; no infra change needed.
-- **Monitoring:** CloudWatch log group `/ecs/pinkconnect-prod`. Set up a metric filter for `mcp.server.config.invalid` to alert on config drift.
+- **JWT keypair rotation:** see `../docs/gotchas.md` ("JWT keypair regen requires force-redeploy"). Both PinkConnect and MCPfarm read the same `/pinkconnect-prod/jwt-public-key` SSM param — `force-new-deployment` both services after rotating.
+- **Image upgrades:** push a new tag to ECR, then `aws cloudformation deploy --parameter-overrides ContainerImage=<new-uri>`. ECS rolls the service with the deployment circuit breaker enabled (auto-rollback on bad releases). Same pattern for `pinkconnect-ecs-prod` and `mcpfarm-ecs-prod`.
+- **Adding more orgs:** PinkConnect partitions by `(selectedOrg, providerId)` claims in the JWT. Your app mints JWTs with whatever `selectedOrg` the user is in; no infra change needed for either service.
+- **Monitoring:** CloudWatch log groups `/ecs/pinkconnect-prod` and `/ecs/mcpfarm-prod`. Set up a metric filter on each for `mcp.server.config.invalid` to alert on config drift. The Upstash rate-limiter has its own dashboard at https://console.upstash.com for request volume + 429 rates.
+- **MCPfarm has no persistent state.** It reads the baked snapshot at container start. Unlike PinkConnect (which holds the credential DB in DocDB), no backup is needed — losing all MCPfarm tasks just means a fresh deploy from the same image returns identical behavior.

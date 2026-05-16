@@ -90,11 +90,17 @@ aws secretsmanager list-secrets --region "$AWS_REGION" --profile "$AWS_PROFILE" 
 
 Production uses `-prod`-suffixed stack names and `/pinkconnect-prod/`
 SSM prefix + `pinkconnect-prod/` Secrets Manager prefix (matching what
-`wip/install-production.md` deploys). It also has two optional stacks (CDN
-+ backup) that must come down before the ECS stack.
+`wip/install-production.md` deploys). It has three optional stacks (CDN,
+backup, mcpfarm) — all must come down before the PinkConnect ECS stack.
 
 ```bash
-# Optional production stacks first.
+# Optional MCPfarm stack first — its ConnectUrl references pinkconnect-ecs-prod
+aws cloudformation delete-stack --stack-name mcpfarm-ecs-prod \
+  --region "$AWS_REGION" --profile "$AWS_PROFILE" 2>/dev/null || true
+aws cloudformation wait stack-delete-complete --stack-name mcpfarm-ecs-prod \
+  --region "$AWS_REGION" --profile "$AWS_PROFILE" 2>/dev/null || true
+
+# Other optional production stacks (CDN, backup).
 aws cloudformation delete-stack --stack-name pinkconnect-cdn-prod \
   --region "$AWS_REGION" --profile "$AWS_PROFILE"
 aws cloudformation delete-stack --stack-name pinkconnect-backup-prod \
