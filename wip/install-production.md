@@ -348,6 +348,17 @@ stack reaches `CREATE_COMPLETE`, `$HOST` resolves through CloudFront.
 
 ## 8. Deploy the backup stack
 
+> **Re-installing in the same account?** The backup vault has
+> `DeletionPolicy: Retain` — it survives stack deletion. If you've
+> torn down a prior production install, the leftover vault
+> (`pinkconnect-prod-vault`) will block this deploy with a name
+> conflict, surfaced as an `EarlyValidation::ResourceExistenceCheck`
+> hook failure. Either delete the orphaned vault first:
+> `aws backup list-recovery-points-by-backup-vault --backup-vault-name pinkconnect-prod-vault --region "$AWS_REGION" --profile "$AWS_PROFILE"`
+> (confirm 0 recoveries or delete them), then
+> `aws backup delete-backup-vault --backup-vault-name pinkconnect-prod-vault --region "$AWS_REGION" --profile "$AWS_PROFILE"`,
+> or change `EnvironmentName` to keep the old vault around.
+
 ```bash
 aws cloudformation deploy \
   --stack-name pinkconnect-backup-prod \
