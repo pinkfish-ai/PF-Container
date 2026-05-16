@@ -4,8 +4,11 @@ pinkfish-connections-admin-app-main/
 
 # Binary artifacts — distributed out of band. Too large for git;
 # deliver via S3 / signed link / direct transfer instead.
+# Pattern matches both legacy SHA-tagged builds and the versioned ones
+# (e.g. pinkconnect-3a0863ee1167.tar.gz, mcpfarm-v0.2.0.tar.gz).
 pinkconnect-*.tar.gz
 mcp-server-*.tar.gz
+mcpfarm-*.tar.gz
 pinkfish-connections-admin-app-main.zip
 
 # Generic Node / editor noise

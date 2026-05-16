@@ -2,6 +2,9 @@
 
 PinkConnect deployed to your own AWS account.
 
+**Current bundle version:** see [`VERSION`](./VERSION) (currently `0.2.0`).
+**What changed:** see [`RELEASE-NOTES.md`](./RELEASE-NOTES.md).
+
 ## Pick a profile
 
 | Profile | Use case | Install doc |
@@ -28,9 +31,14 @@ Claude will ask four up-front questions (AWS profile, region, domain,
 - A domain in Route53 in that account (PinkConnect lives on a
   subdomain — e.g. `connect.example.com` for smoke or
   `prod.example.com` for production).
-- Two binary artifacts from Pinkfish, dropped into the repo root:
-  - `pinkconnect-<version>.tar.gz` — the container image
+- Three binary artifacts from Pinkfish, dropped into the repo root:
+  - `pinkconnect-<version>.tar.gz` — PinkConnect container image
+  - `mcpfarm-<version>.tar.gz` — MCPfarm container image *(added in bundle v0.2.0; optional — skip if you don't need the MCP layer)*
   - `pinkfish-connections-admin-app-main.zip` — the admin app
+
+  Each artifact's filename carries its own version. The bundle version
+  in [`VERSION`](./VERSION) pins which versions of these go together —
+  use it when telling Pinkfish support what release you're on.
 
   Contact Pinkfish to get them if you don't have them already.
 - *(Production only)* a few extra prerequisites enumerated in
