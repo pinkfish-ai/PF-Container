@@ -36,7 +36,17 @@ Parameters:
   CustomDomainName:
     Type: String
   Route53HostedZoneId:
-    Type: AWS::Route53::HostedZone::Id
+    Type: String
+    Default: ''
+    Description: >
+      Route53 hosted zone containing CustomDomainName. Required only
+      when CreateDnsRecord=true (or OriginHostname is set) — those are
+      the only resources that consume it. Leave empty when you manage
+      DNS outside Route53 (CreateDnsRecord=false): create the record
+      pointing at the AlbDnsName output in your own DNS instead. Typed
+      as String (not AWS::Route53::HostedZone::Id) so an empty value is
+      accepted in the no-Route53 / unattended-pipeline case; CFN's
+      hosted-zone parameter type rejects an empty placeholder.
   CertificateArn:
     Type: String
 

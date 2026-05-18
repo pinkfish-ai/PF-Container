@@ -47,7 +47,7 @@ Outputs: `DocDbClusterArn`, `DocDbEndpoint`, `DocDbReaderEndpoint`, `DocDbPort`,
 | `VpcId`, `PublicSubnetAId`/`B`, `PrivateSubnetAId`/`B` | required | From networking outputs. |
 | `ContainerImage` | required | Full ECR image URI for the PinkConnect image. arm64-only. |
 | `CustomDomainName` | required | Customer-facing hostname (e.g. `connect.example.com`). |
-| `Route53HostedZoneId` | required | Route53 hosted zone containing `CustomDomainName`. |
+| `Route53HostedZoneId` | `''` | Route53 hosted zone containing `CustomDomainName`. Required only when `CreateDnsRecord=true` or `OriginHostname` is set (the only consumers). Leave empty when managing DNS outside Route53. |
 | `CertificateArn` | required | ACM cert for `CustomDomainName` in the ALB's region. |
 | `CallbackUrl` | required | `https://<host>/connect/callback`. |
 | `SsmPrefix` | `/pinkconnect` | SSM path where the task reads static secrets. |
@@ -118,7 +118,7 @@ reference the PinkConnect ALB.
 | `ContainerImage` | required | ECR image URI for the Pinkfish MCP server image (arm64 only). |
 | `ConnectUrl` | required | Customer's PinkConnect base URL (the PinkConnect ALB's PublicUrl). Tool handlers POST credentialed upstream calls through this URL. **No Pinkfish-hosted endpoints permitted.** |
 | `CustomDomainName` | required | DNS name for the MCPfarm ALB (e.g. `mcp.example.com`). Must be covered by `CertificateArn`. |
-| `Route53HostedZoneId` | required | Hosted zone holding `CustomDomainName`. |
+| `Route53HostedZoneId` | `''` | Hosted zone holding `CustomDomainName`. Required only when `CreateDnsRecord=true` (the only consumer). Leave empty when managing DNS outside Route53. |
 | `CertificateArn` | required | ACM cert in the ALB region covering `CustomDomainName`. A wildcard from the PinkConnect install works. |
 | `SsmPrefix` | `/pinkconnect` | SSM namespace for shared secrets (`jwt-public-key`, `upstash-ratelimit-redis-url`, `upstash-ratelimit-redis-token`). Defaults to PinkConnect's namespace because those are shared operational secrets; override only if you want a separate namespace. |
 | `DesiredCount` / `MaxCount` | `1` / `5` | Task count knobs. Default 1 is smoke-only; bump to 2+ for production. |
