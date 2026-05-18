@@ -46,7 +46,17 @@ Parameters:
       Customer-facing DNS name for the MCPfarm ALB
       (e.g. mcp.example.com). Must be covered by CertificateArn.
   Route53HostedZoneId:
-    Type: AWS::Route53::HostedZone::Id
+    Type: String
+    Default: ''
+    Description: >
+      Route53 hosted zone holding CustomDomainName. Required only when
+      CreateDnsRecord=true — the DnsRecord resource is the only consumer.
+      Leave empty when you manage DNS outside Route53
+      (CreateDnsRecord=false): point your own DNS at the AlbDnsName
+      output instead. Typed as String (not AWS::Route53::HostedZone::Id)
+      so an empty value is accepted in the no-Route53 /
+      unattended-pipeline case; CFN's hosted-zone parameter type rejects
+      an empty placeholder.
   CertificateArn:
     Type: String
 
