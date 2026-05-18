@@ -16,6 +16,30 @@ Bundle versions ship as a coordinated set. The components inside (PinkConnect im
 
 ---
 
+## 0.2.1 — 2026-05-18
+
+Templates-only release. **No new binaries** — the PinkConnect image, MCPfarm image, and admin-app zip are byte-for-byte the same as 0.2.0. If you are on 0.2.0, upgrading is just dropping in the two updated CloudFormation templates; nothing to re-load or re-push to ECR.
+
+### Components
+
+| Component | Version | Notes |
+|---|---|---|
+| MCPfarm | `mcpfarm-v0.2.0.tar.gz` | Unchanged from 0.2.0 |
+| PinkConnect | `pinkconnect-3a0863ee1167.tar.gz` | Unchanged from 0.1.0 |
+| Admin app | `pinkfish-connections-admin-app-main.zip` (internal `package.json` `version: 0.2.0`) | Unchanged from 0.2.0 |
+| CloudFormation templates | `pinkconnect-ecs.yaml`, `mcpfarm-ecs.yaml` updated | `Route53HostedZoneId` is now optional |
+
+### What changed
+
+- **`Route53HostedZoneId` is now an optional parameter** on `pinkconnect-ecs.yaml` and `mcpfarm-ecs.yaml` (retyped from `AWS::Route53::HostedZone::Id` to `String`, `Default: ''`). Previously it was required even when `CreateDnsRecord=false`, because CloudFormation's hosted-zone parameter type rejects an empty placeholder — which blocked deployments that manage DNS outside Route 53 (and any unattended pipeline). The parameter is only consumed by conditional DNS resources, so an empty value is inert when DNS is skipped. When `CreateDnsRecord=true` the value is still required and a missing zone fails the record-set creation with a clear error — the default Route 53-managed path is unchanged. The optional `pinkconnect-cdn.yaml` stack is untouched (it always owns DNS).
+- `docs/parameter-reference.md` updated for the two rows.
+
+### Upgrade notes
+
+- Replace `cloudformation/pinkconnect-ecs.yaml` and `cloudformation/mcpfarm-ecs.yaml` with the 0.2.1 files. No image, admin-app, SSM, or parameter changes. Existing stacks are unaffected until their next deploy; redeploying with the new templates is a no-op unless you set `CreateDnsRecord=false`.
+
+---
+
 ## 0.2.0 — 2026-05-16
 
 ### Components
