@@ -36,9 +36,20 @@ Parameters:
   CustomDomainName:
     Type: String
   Route53HostedZoneId:
-    Type: AWS::Route53::HostedZone::Id
+    Type: String
+    Default: ''
+    Description: >-
+      Hosted zone ID for the customer-facing DNS alias. Required when
+      `CreateDnsRecord=true` (default); leave empty when
+      `CreateDnsRecord=false` (e.g. self-host deployments where the
+      domain cannot be hosted in Route 53 — see
+      `docs/deploy-without-route53.md`).
   CertificateArn:
     Type: String
+    Description: >-
+      ACM certificate ARN for the ALB HTTPS listener. Must cover
+      `CustomDomainName`. Accepts ACM-issued certs or imported certs
+      (from an external CA) created with `aws acm import-certificate`.
 
   # ---- Secrets prefixes ----
   SsmPrefix:

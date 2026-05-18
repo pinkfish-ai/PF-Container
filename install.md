@@ -15,6 +15,7 @@ for DocumentDB (~8 min) and the ALB (~5 min) to provision.
 - [`docs/docs/gotchas.md`](./docs/docs/gotchas.md) — read first, especially "SG wire-up timing"
 - [`docs/troubleshooting.md`](./docs/troubleshooting.md) — for when something breaks
 - [`docs/parameter-reference.md`](./docs/parameter-reference.md) — what every CFN param means
+- [`docs/deploy-without-route53.md`](./docs/deploy-without-route53.md) — alternative install path when the target domain can't live in Route 53 (org-restricted DNS, externally-managed cert)
 - [`teardown.md`](./teardown.md) — when you're done
 
 ---
