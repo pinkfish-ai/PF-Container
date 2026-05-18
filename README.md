@@ -2,7 +2,7 @@
 
 Run the Pinkfish stack inside your own infrastructure — your AWS account, your IAM, your encryption keys, your network boundary. **15,783 MCP tools across 344 SaaS integrations**, all behind a single ECS service you control.
 
-**Current bundle version:** see [`VERSION`](./VERSION) — currently `0.2.0`.
+**Current bundle version:** see [`VERSION`](./VERSION) — currently `0.2.1`.
 **What changed since 0.1.0:** [`RELEASE-NOTES.md`](./RELEASE-NOTES.md).
 
 ---
