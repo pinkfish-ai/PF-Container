@@ -159,7 +159,13 @@ echo "ALB hostname: $ALB_DNS"
 # e.g. pinkconnect-1706009482.eu-central-1.elb.amazonaws.com
 ```
 
-### 6b. Create the CNAME in your external DNS provider
+### 6b. Create the CNAME in your external DNS provider (production)
+
+> Skip this step for a quick smoke test if you're OK hitting the ALB
+> hostname directly — see "Smoke testing without DNS" below. For any
+> real usage (browsers, production clients, anything that validates
+> TLS), the CNAME is effectively required because the imported cert
+> is bound to `<host>`, not to the AWS-managed ALB hostname.
 
 In your organization's DNS (Akamai, NS1, Cloudflare, internal IPAM,
 etc.) create a single CNAME record:
@@ -189,6 +195,27 @@ dig +short CNAME "$HOST"
 > zone apex isn't valid per RFC 1035. Either deploy on a subdomain
 > (recommended) or use your DNS provider's apex alias / ALIAS / ANAME
 > record type, which most modern providers support.
+
+### 6c. Smoke testing without DNS (optional)
+
+If you just want to confirm the stack is healthy before involving
+your DNS team, hit the ALB hostname directly. Two viable shapes:
+
+```bash
+# (a) Skip TLS verification entirely. Quickest; fine for smoke only.
+curl -k -i "https://${ALB_DNS}/health/live"
+
+# (b) Verify TLS but pretend the ALB hostname is $HOST, so SNI +
+#     cert subject still match. Closer to a real client request.
+curl --resolve "${HOST}:443:$(dig +short "${ALB_DNS}" | head -1)" \
+     -i "https://${HOST}/health/live"
+```
+
+Both should return `HTTP/2 200 {"status":"ok"}`. Real clients (browsers,
+SDKs, production callers) won't accept either shape — they'll get
+`SSL: no alternative certificate subject name matches target host
+name` because the imported cert is bound to `<host>`, not to the
+AWS-managed ALB hostname. That's the moment §6b stops being optional.
 
 ---
 
