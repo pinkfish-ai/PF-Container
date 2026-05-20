@@ -16,6 +16,38 @@ Bundle versions ship as a coordinated set. The components inside (PinkConnect im
 
 ---
 
+## 0.3.0 — 2026-05-19
+
+Security refresh. Both container images rebuilt against the latest Debian 12 patch level to clear the open-CVE backlog Vanta surfaced on the 0.2.0 PinkConnect image.
+
+### Components
+
+| Component | Version | Notes |
+|---|---|---|
+| MCPfarm | `mcpfarm-v0.3.0.tar.gz` | Rebuild of platform `main`. Adds `apt-get upgrade` to the runtime stage (PIN-6500, [platform#3700](https://github.com/pinkfish-ai/platform/pull/3700)) so future builds keep absorbing Debian security releases without waiting for the upstream `node:24-slim` tag to be refreshed. |
+| PinkConnect | `pinkconnect-v0.3.0.tar.gz` | Rebuild of pinkfish-connections `containerization` HEAD. Same `apt-get upgrade` pattern in the Dockerfile so future rebuilds pick up Debian security releases automatically. |
+| Admin app | `pinkfish-connections-admin-app-main.zip` (internal `package.json` `version: 0.2.0`) | Unchanged from 0.2.0. |
+| CloudFormation templates | Same files as 0.2.1 | No infra schema changes. |
+
+### What changed
+
+- **All 15 originally-flagged OS-level CVEs cleared** (glibc, systemd, dpkg, libcap2, libgcrypt20, sed). The fix is that both Dockerfiles now run `apt-get update && apt-get upgrade -y` in the runtime stage instead of relying on the upstream base-image tag to ship current Debian patches.
+- **Operator-facing change: tarball naming.** PinkConnect's tarball is now versioned (`pinkconnect-v0.3.0.tar.gz`) instead of git-SHA-tagged (`pinkconnect-3a0863ee1167.tar.gz`). Both halves of the bundle now use the same `<name>-v<version>.tar.gz` form.
+- **ECR hygiene (no operator impact).** `scanOnPush` enabled on both source ECR repos plus a lifecycle policy that auto-expires untagged images > 14 days and caps tagged history at the last 20. Prevents stale vulnerable digests from accumulating in the build account.
+
+### Known residue
+
+- 1 MEDIUM ECR Inspector finding remains on each image. Debian-12 base-layer issue with no upstream fix released yet; will clear automatically on the next rebuild after Debian publishes a patch.
+
+### Upgrade notes
+
+- Drop the two new `*-v0.3.0.tar.gz` files into this directory (replacing the 0.2.0 files).
+- `docker load < pinkconnect-v0.3.0.tar.gz` and `docker load < mcpfarm-v0.3.0.tar.gz` on the machine that pushes to your ECR.
+- Push to your ECR with whatever tag scheme you use, then update the `ContainerImage` parameter on the `pinkconnect-ecs` and `mcpfarm-ecs` CloudFormation stacks to the new image URIs and redeploy.
+- No SSM, IAM, or CloudFormation schema changes.
+
+---
+
 ## 0.2.1 — 2026-05-18
 
 Templates-only release. **No new binaries** — the PinkConnect image, MCPfarm image, and admin-app zip are byte-for-byte the same as 0.2.0. If you are on 0.2.0, upgrading is just dropping in the two updated CloudFormation templates; nothing to re-load or re-push to ECR.
