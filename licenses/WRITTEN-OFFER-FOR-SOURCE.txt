@@ -1,0 +1,34 @@
+WRITTEN OFFER FOR SOURCE CODE
+Pinkfish self-hosted container images (pinkconnect-v0.3.0, mcpfarm-v0.3.0)
+
+These container images include unmodified open-source system packages from the
+Debian GNU/Linux base image that are licensed under the GNU General Public
+License (GPL) versions 1, 2, and 3, and the GNU Lesser General Public License
+(LGPL) versions 2, 2.1, and 3. A complete list of these packages and their
+versions is provided in the accompanying THIRD-PARTY-NOTICES-<image>.txt files,
+under the "BASE-OS (Debian) SYSTEM PACKAGES" section.
+
+For any GPL- or LGPL-licensed package contained in these images, Pinkfish will,
+upon written request and for a period of three (3) years from the date you
+received the image, provide the complete corresponding source code for the
+version distributed, on a physical medium or via download, for a charge no more
+than the cost of physically performing the distribution.
+
+The corresponding source for every such package is also publicly available from
+the Debian project for the exact versions shipped here:
+  - https://sources.debian.org/        (browse/download by package + version)
+  - http://snapshot.debian.org/        (version-pinned archive of all packages)
+
+To request source directly from Pinkfish, contact:
+  Pinkfish, Inc. — opensource@pinkfish.ai
+
+Notes:
+- The Debian system packages are independent programs aggregated on the image
+  with Pinkfish's proprietary application; they are not linked into and do not
+  form a derivative work with Pinkfish's software.
+- GNU C Library (glibc / libc6) and other LGPL libraries are used via dynamic
+  linking and are unmodified.
+- Pinkfish's own application code is proprietary and is not covered by this
+  offer; the open-source components of the application layer are permissively
+  licensed (MIT, Apache-2.0, BSD, ISC) and are attributed in the
+  THIRD-PARTY-NOTICES-<image>.txt files.

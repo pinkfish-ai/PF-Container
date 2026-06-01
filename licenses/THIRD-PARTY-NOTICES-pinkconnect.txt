@@ -1,0 +1,660 @@
+THIRD-PARTY SOFTWARE NOTICES — Pinkfish PinkConnect proxy (image pinkconnect-v0.3.0)
+Generated 2026-06-01 from the image SBOM (Trivy/CycloneDX). This file lists the open-source
+components distributed in this container image and their licenses, satisfying the attribution
+requirements of the permissive licenses (MIT, Apache-2.0, BSD, ISC) and accompanying the
+written source offer (see WRITTEN-OFFER-FOR-SOURCE.txt) for the GPL/LGPL base-OS packages.
+
+=== APPLICATION COMPONENTS (563) ===
+1to2@1.0.0  —  MIT
+abbrev@4.0.0  —  ISC
+abort-controller@2.1.2  —  MIT
+abort-controller@3.0.0  —  MIT
+accepts@2.0.0  —  MIT
+agent@4.0.0  —  ISC
+agent-base@7.1.4  —  MIT
+ansi-regex@5.0.1  —  MIT
+ansi-regex@6.2.2  —  MIT
+ansi-styles@6.2.3  —  MIT
+ansi-styles@4.3.0  —  MIT
+aproba@2.1.0  —  ISC
+arborist@9.4.2  —  ISC
+archy@1.0.0  —  MIT
+asn1@0.2.6  —  MIT
+aspromise@1.1.2  —  BSD-3-Clause
+asynckit@0.4.0  —  MIT
+atomic-sleep@1.0.0  —  MIT
+aws-ssl-profiles@1.1.2  —  MIT
+axios@1.15.2  —  MIT
+balanced-match@4.0.4  —  MIT
+balanced-match@1.0.2  —  MIT
+base64@1.1.2  —  BSD-3-Clause
+base64-js@1.5.1  —  MIT
+basic-ftp@5.3.1  —  MIT
+bcrypt-pbkdf@1.0.2  —  BSD-3-Clause
+bignumber.js@9.3.1  —  MIT
+bin-links@6.0.0  —  ISC
+binary-extensions@3.1.0  —  MIT
+bl@6.1.6  —  MIT
+body-parser@2.2.2  —  MIT
+bowser@2.14.1  —  MIT
+brace-expansion@1.1.13  —  MIT
+brace-expansion@5.0.4  —  MIT
+bson@7.2.0  —  Apache-2.0
+buffer@6.0.3  —  MIT
+buffer-equal-constant-time@1.0.1  —  BSD-3-Clause
+buffer-from@1.1.2  —  MIT
+bundle@4.0.0  —  Apache-2.0
+bundle-name@4.1.0  —  MIT
+busboy@1.6.0  —  UNKNOWN
+bytes@3.1.2  —  MIT
+cacache@20.0.4  —  ISC
+call-bind-apply-helpers@1.0.2  —  MIT
+call-bound@1.0.4  —  MIT
+canonical-json@2.0.0  —  MIT
+chalk@5.6.2  —  MIT
+chownr@3.0.0  —  BlueOak-1.0.0
+chunked-blob-reader@5.2.2  —  Apache-2.0
+chunked-blob-reader-native@4.2.3  —  Apache-2.0
+ci-info@4.4.0  —  MIT
+cidr-regex@5.0.3  —  BSD-2-Clause
+client-s3@3.1038.0  —  Apache-2.0
+client-secrets-manager@3.1038.0  —  Apache-2.0
+client-ssm@3.1038.0  —  Apache-2.0
+cliui@8.0.2  —  ISC
+cliui@8.0.1  —  ISC
+cmd-shim@8.0.0  —  ISC
+codegen@2.0.5  —  BSD-3-Clause
+color-convert@2.0.1  —  MIT
+color-name@1.1.4  —  MIT
+combined-stream@1.0.8  —  MIT
+commander@11.1.0  —  MIT
+common-ancestor-path@2.0.0  —  BlueOak-1.0.0
+concat-map@0.0.1  —  MIT
+concat-stream@2.0.0  —  MIT
+config@10.8.1  —  ISC
+config-resolver@4.4.17  —  Apache-2.0
+connection-string@0.5.0  —  MIT
+content-disposition@1.1.0  —  MIT
+content-type@1.0.5  —  MIT
+cookie@0.7.2  —  MIT
+cookie-signature@1.2.2  —  MIT
+core@3.2.0  —  Apache-2.0
+core@3.974.6  —  Apache-2.0
+core@3.23.17  —  Apache-2.0
+core@5.7.0  —  BSD-3-Clause
+core-analytics@v0.0.10  —  MIT
+core-auth@1.10.1  —  MIT
+core-client@2.6.0  —  MIT
+core-client@1.10.1  —  MIT
+core-http-compat@2.4.0  —  MIT
+core-lro@2.7.2  —  MIT
+core-paging@1.6.2  —  MIT
+core-rest-pipeline@1.23.0  —  MIT
+core-tracing@1.3.1  —  MIT
+core-util@1.13.1  —  MIT
+corepack@0.34.6  —  MIT
+cors@2.8.6  —  MIT
+crc32@5.2.0  —  Apache-2.0
+crc32c@5.2.0  —  Apache-2.0
+crc64-nvme@3.972.7  —  Apache-2.0
+credential-provider-env@3.972.32  —  Apache-2.0
+credential-provider-http@3.972.34  —  Apache-2.0
+credential-provider-imds@4.2.14  —  Apache-2.0
+credential-provider-ini@3.972.36  —  Apache-2.0
+credential-provider-login@3.972.36  —  Apache-2.0
+credential-provider-node@3.972.37  —  Apache-2.0
+credential-provider-process@3.972.32  —  Apache-2.0
+credential-provider-sso@3.972.36  —  Apache-2.0
+credential-provider-web-identity@3.972.36  —  Apache-2.0
+cross-spawn@7.0.6  —  MIT
+cssesc@3.0.0  —  MIT
+data-uri-to-buffer@4.0.1  —  MIT
+debian@12.14  —  UNKNOWN
+debug@4.4.3  —  MIT
+default-browser@5.5.0  —  MIT
+default-browser-id@5.0.1  —  MIT
+define-lazy-prop@3.0.0  —  MIT
+delayed-stream@1.0.0  —  MIT
+denque@2.1.0  —  Apache-2.0
+depd@2.0.0  —  MIT
+diff@8.0.3  —  BSD-3-Clause
+dunder-proto@1.0.1  —  MIT
+duplexify@4.1.3  —  MIT
+eastasianwidth@0.2.0  —  MIT
+ecdsa-sig-formatter@1.0.11  —  Apache-2.0
+ee-first@1.1.1  —  MIT
+emoji-regex@9.2.2  —  MIT
+emoji-regex@8.0.0  —  MIT
+encodeurl@2.0.0  —  MIT
+end-of-stream@1.4.5  —  MIT
+entities@2.1.0  —  MIT
+env-paths@2.2.1  —  MIT
+es-define-property@1.0.1  —  MIT
+es-errors@1.3.0  —  MIT
+es-object-atoms@1.1.1  —  MIT
+es-set-tostringtag@2.1.0  —  MIT
+escalade@3.2.0  —  MIT
+escape-html@1.0.3  —  MIT
+etag@1.8.1  —  MIT
+event-target-shim@5.0.1  —  MIT
+eventemitter@1.1.0  —  BSD-3-Clause
+events@3.3.0  —  MIT
+eventstream-codec@4.2.14  —  Apache-2.0
+eventstream-serde-browser@4.2.14  —  Apache-2.0
+eventstream-serde-config-resolver@4.3.14  —  Apache-2.0
+eventstream-serde-node@4.2.14  —  Apache-2.0
+eventstream-serde-universal@4.2.14  —  Apache-2.0
+exponential-backoff@3.1.3  —  Apache-2.0
+express@5.2.1  —  MIT
+extend@3.0.2  —  MIT
+fast-xml-builder@1.1.5  —  MIT
+fast-xml-parser@5.7.2  —  MIT
+fastest-levenshtein@1.0.16  —  MIT
+fdir@6.5.0  —  MIT
+fetch@1.1.0  —  BSD-3-Clause
+fetch-blob@3.2.0  —  MIT
+fetch-http-handler@5.3.17  —  Apache-2.0
+finalhandler@2.1.1  —  MIT
+float@1.0.2  —  BSD-3-Clause
+follow-redirects@1.16.0  —  MIT
+foreground-child@3.3.1  —  ISC
+form-data@4.0.5  —  MIT
+formdata-polyfill@4.0.10  —  MIT
+forwarded@0.2.0  —  MIT
+fresh@2.0.0  —  MIT
+fs@5.0.0  —  ISC
+fs-minipass@3.0.3  —  ISC
+fs-minipass@4.0.1  —  ISC
+function-bind@1.1.2  —  MIT
+functions@1.2.0  —  UNKNOWN
+gaxios@7.1.4  —  Apache-2.0
+gcp-metadata@8.1.2  —  Apache-2.0
+generate-function@2.3.1  —  MIT
+get-caller-file@2.0.5  —  ISC
+get-intrinsic@1.3.0  —  MIT
+get-proto@1.0.1  —  MIT
+git@7.0.2  —  ISC
+glob@10.5.0  —  ISC
+glob@13.0.6  —  BlueOak-1.0.0
+google-auth-library@10.6.2  —  Apache-2.0
+google-gax@5.0.6  —  Apache-2.0
+google-logging-utils@1.1.3  —  Apache-2.0
+gopd@1.2.0  —  MIT
+graceful-fs@4.2.11  —  ISC
+grpc-js@1.14.3  —  Apache-2.0
+has-symbols@1.1.0  —  MIT
+has-tostringtag@1.0.2  —  MIT
+hash-blob-browser@4.2.15  —  Apache-2.0
+hash-node@4.2.14  —  Apache-2.0
+hash-stream-node@4.2.14  —  Apache-2.0
+hasown@2.0.3  —  MIT
+hosted-git-info@9.0.2  —  ISC
+http-cache-semantics@4.2.0  —  BSD-2-Clause
+http-errors@2.0.1  —  MIT
+http-proxy-agent@7.0.2  —  MIT
+https-proxy-agent@7.0.6  —  MIT
+iconv-lite@0.7.2  —  MIT
+iconv-lite@0.6.3  —  MIT
+identity@4.13.1  —  MIT
+ieee754@1.2.1  —  BSD-3-Clause
+ignore-walk@8.0.0  —  ISC
+inherits@2.0.4  —  ISC
+ini@6.0.0  —  ISC
+init-package-json@8.2.5  —  ISC
+inquire@1.1.1  —  BSD-3-Clause
+installed-package-contents@4.0.0  —  ISC
+invalid-dependency@4.2.14  —  Apache-2.0
+ip-address@10.1.0  —  MIT
+ipaddr.js@1.9.1  —  MIT
+ipaddr.js@2.3.0  —  MIT
+is-array-buffer@2.2.0  —  Apache-2.0
+is-array-buffer@4.2.2  —  Apache-2.0
+is-cidr@6.0.3  —  BSD-2-Clause
+is-docker@3.0.0  —  MIT
+is-fullwidth-code-point@3.0.0  —  MIT
+is-inside-container@1.0.0  —  MIT
+is-promise@4.0.0  —  MIT
+is-property@1.0.2  —  MIT
+is-wsl@3.1.1  —  MIT
+isexe@4.0.0  —  BlueOak-1.0.0
+isexe@2.0.0  —  ISC
+jackspeak@3.4.3  —  BlueOak-1.0.0
+jose@6.2.3  —  MIT
+js-md4@0.3.2  —  MIT
+json-bigint@1.0.0  —  MIT
+json-parse-even-better-errors@5.0.0  —  MIT
+json-stringify-nice@1.1.4  —  ISC
+jsonparse@1.3.1  —  MIT
+jsonwebtoken@9.0.3  —  MIT
+jsonwebtoken@9.0.10  —  MIT
+just-diff@6.0.2  —  MIT
+just-diff-apply@5.5.0  —  MIT
+jwa@2.0.1  —  MIT
+jwks-rsa@4.0.1  —  MIT
+jws@4.0.1  —  MIT
+kareem@3.3.0  —  Apache-2.0
+keyvault-common@2.1.0  —  MIT
+keyvault-keys@4.10.0  —  MIT
+lambda-invoke-store@0.2.4  —  Apache-2.0
+libnpmaccess@10.0.3  —  ISC
+libnpmdiff@8.1.5  —  ISC
+libnpmexec@10.2.5  —  ISC
+libnpmfund@7.0.19  —  ISC
+libnpmorg@8.0.1  —  ISC
+libnpmpack@9.1.5  —  ISC
+libnpmpublish@11.1.3  —  ISC
+libnpmsearch@9.0.1  —  ISC
+libnpmteam@8.0.2  —  ISC
+libnpmversion@8.0.3  —  ISC
+limiter@1.1.5  —  UNKNOWN
+lodash.camelcase@4.3.0  —  MIT
+lodash.clonedeep@4.5.0  —  MIT
+lodash.includes@4.3.0  —  MIT
+lodash.isboolean@3.0.3  —  MIT
+lodash.isinteger@4.0.4  —  MIT
+lodash.isnumber@3.0.3  —  MIT
+lodash.isplainobject@4.0.6  —  MIT
+lodash.isstring@4.0.1  —  MIT
+lodash.once@4.1.1  —  MIT
+logger@1.3.0  —  MIT
+long@5.3.2  —  Apache-2.0
+lru-cache@10.4.3  —  ISC
+lru-cache@11.2.7  —  BlueOak-1.0.0
+lru-cache@11.3.5  —  BlueOak-1.0.0
+lru-memoizer@3.0.0  —  MIT
+lru.min@1.1.4  —  MIT
+make-fetch-happen@15.0.5  —  ISC
+map-workspaces@5.0.3  —  ISC
+math-intrinsics@1.1.0  —  MIT
+md5-js@4.2.14  —  Apache-2.0
+media-typer@1.1.0  —  MIT
+memory-pager@1.5.0  —  MIT
+merge-descriptors@2.0.0  —  MIT
+metavuln-calculator@9.0.3  —  ISC
+middleware-bucket-endpoint@3.972.10  —  Apache-2.0
+middleware-content-length@4.2.14  —  Apache-2.0
+middleware-endpoint@4.4.32  —  Apache-2.0
+middleware-expect-continue@3.972.10  —  Apache-2.0
+middleware-flexible-checksums@3.974.14  —  Apache-2.0
+middleware-host-header@3.972.10  —  Apache-2.0
+middleware-location-constraint@3.972.10  —  Apache-2.0
+middleware-logger@3.972.10  —  Apache-2.0
+middleware-recursion-detection@3.972.11  —  Apache-2.0
+middleware-retry@4.5.6  —  Apache-2.0
+middleware-sdk-s3@3.972.35  —  Apache-2.0
+middleware-serde@4.2.20  —  Apache-2.0
+middleware-ssec@3.972.10  —  Apache-2.0
+middleware-stack@4.2.14  —  Apache-2.0
+middleware-user-agent@3.972.36  —  Apache-2.0
+mime-db@1.52.0  —  MIT
+mime-db@1.54.0  —  MIT
+mime-types@2.1.35  —  MIT
+mime-types@3.0.2  —  MIT
+minimatch@9.0.9  —  ISC
+minimatch@10.2.4  —  BlueOak-1.0.0
+minipass@3.3.6  —  ISC
+minipass@7.1.3  —  BlueOak-1.0.0
+minipass-collect@2.0.1  —  ISC
+minipass-fetch@5.0.2  —  MIT
+minipass-flush@1.0.5  —  ISC
+minipass-pipeline@1.2.4  —  ISC
+minipass-sized@2.0.0  —  ISC
+minizlib@3.1.0  —  MIT
+models@4.1.0  —  MIT
+mongodb@7.2.0  —  Apache-2.0
+mongodb@7.1.1  —  Apache-2.0
+mongodb-connection-string-url@7.0.1  —  Apache-2.0
+mongoose@9.5.0  —  MIT
+mpath@0.9.0  —  MIT
+mquery@6.0.0  —  MIT
+ms@2.1.3  —  MIT
+ms@2.1.0  —  MIT
+msal-browser@5.8.0  —  MIT
+msal-common@16.5.1  —  MIT
+msal-node@5.1.4  —  MIT
+mssql@11.0.1  —  MIT
+mute-stream@3.0.0  —  ISC
+mysql2@3.22.3  —  MIT
+name-from-folder@4.0.0  —  ISC
+named-placeholders@1.1.6  —  MIT
+nan@2.26.2  —  MIT
+native-duplexpair@1.0.0  —  MIT
+negotiator@1.0.0  —  MIT
+nested-clients@3.997.4  —  Apache-2.0
+node@22.19.17  —  MIT
+node-config-provider@4.3.14  —  Apache-2.0
+node-cron@4.2.1  —  ISC
+node-domexception@1.0.0  —  MIT
+node-fetch@3.3.2  —  MIT
+node-gyp@5.0.0  —  ISC
+node-gyp@12.2.0  —  MIT
+node-http-handler@4.6.1  —  Apache-2.0
+nopt@9.0.0  —  ISC
+npm@11.12.1  —  Artistic-2.0
+npm-audit-report@7.0.0  —  ISC
+npm-bundled@5.0.0  —  ISC
+npm-install-checks@8.0.0  —  BSD-2-Clause
+npm-normalize-package-bin@5.0.0  —  ISC
+npm-package-arg@13.0.2  —  ISC
+npm-packlist@10.0.4  —  ISC
+npm-pick-manifest@11.0.3  —  ISC
+npm-profile@12.0.1  —  ISC
+npm-registry-fetch@19.1.1  —  ISC
+npm-user-validate@4.0.0  —  BSD-2-Clause
+object-assign@4.1.1  —  MIT
+object-hash@3.0.0  —  MIT
+object-inspect@1.13.4  —  MIT
+on-exit-leak-free@2.1.2  —  MIT
+on-finished@2.4.1  —  MIT
+once@1.4.0  —  ISC
+open@10.2.0  —  MIT
+ordered-map@4.4.2  —  MIT
+p-map@7.0.4  —  MIT
+package-json@7.0.5  —  ISC
+package-json-from-dist@1.0.1  —  BlueOak-1.0.0
+pacote@21.5.0  —  ISC
+parse-conflict-json@5.0.1  —  ISC
+parseargs@0.11.0  —  MIT
+parseurl@1.3.3  —  MIT
+path@1.1.2  —  BSD-3-Clause
+path-expression-matcher@1.5.0  —  MIT
+path-key@3.1.1  —  MIT
+path-scurry@2.0.2  —  BlueOak-1.0.0
+path-scurry@1.11.1  —  BlueOak-1.0.0
+path-to-regexp@8.4.2  —  MIT
+pg@8.20.0  —  MIT
+pg-cloudflare@1.3.0  —  MIT
+pg-connection-string@2.12.0  —  MIT
+pg-int8@1.0.1  —  ISC
+pg-pool@3.13.0  —  MIT
+pg-protocol@1.13.0  —  MIT
+pg-types@2.2.0  —  MIT
+pgpass@1.0.5  —  MIT
+picomatch@4.0.3  —  MIT
+pino@10.3.1  —  MIT
+pino-abstract-transport@3.0.0  —  MIT
+pino-std-serializers@7.1.0  —  MIT
+pool@1.1.0  —  BSD-3-Clause
+postcss-selector-parser@7.1.1  —  MIT
+postgres-array@2.0.0  —  MIT
+postgres-bytea@1.0.1  —  MIT
+postgres-date@1.0.7  —  MIT
+postgres-interval@1.2.0  —  MIT
+proc-log@6.1.0  —  ISC
+process@0.11.10  —  MIT
+process-warning@5.0.0  —  MIT
+proggy@4.0.0  —  ISC
+promise-all-reject-late@1.0.1  —  ISC
+promise-call-limit@3.0.2  —  ISC
+promise-retry@1.0.3  —  MIT
+promise-spawn@9.0.1  —  ISC
+promzard@3.0.1  —  ISC
+property-provider@4.2.14  —  Apache-2.0
+proto-loader@0.8.0  —  Apache-2.0
+proto3-json-serializer@3.0.4  —  Apache-2.0
+protobuf-specs@0.5.0  —  Apache-2.0
+protobufjs@7.5.6  —  BSD-3-Clause
+protocol-http@5.3.14  —  Apache-2.0
+proxy-addr@2.0.7  —  MIT
+proxy-from-env@2.1.0  —  MIT
+psl@1.15.0  —  MIT
+psl@1.1.3  —  MIT
+punycode@2.3.1  —  MIT
+qrcode-terminal@0.12.0  —  UNKNOWN
+qs@6.15.1  —  BSD-3-Clause
+query@5.0.0  —  ISC
+querystring-builder@4.2.14  —  Apache-2.0
+querystring-parser@4.2.14  —  Apache-2.0
+quick-format-unescaped@4.0.4  —  MIT
+range-parser@1.2.1  —  MIT
+ratelimit@v2.0.8  —  MIT
+raw-body@3.0.2  —  MIT
+read@5.0.1  —  ISC
+read-cmd-shim@6.0.0  —  ISC
+readable-stream@4.7.0  —  MIT
+readable-stream@3.6.2  —  MIT
+readable-stream@4.0.23  —  MIT
+real-require@0.2.0  —  MIT
+redact@4.0.0  —  ISC
+redact@0.4.0  —  MIT
+redis@1.37.0  —  MIT
+region-config-resolver@3.972.13  —  Apache-2.0
+require-directory@2.1.1  —  MIT
+retry-request@8.0.2  —  MIT
+rfdc@1.4.1  —  MIT
+rimraf@5.0.10  —  ISC
+router@2.2.0  —  MIT
+run-applescript@7.1.0  —  MIT
+run-script@10.0.4  —  ISC
+s3-request-presigner@3.1038.0  —  Apache-2.0
+safe-buffer@5.2.1  —  MIT
+safe-stable-stringify@2.5.0  —  MIT
+safer-buffer@2.1.2  —  MIT
+saslprep@1.4.9  —  MIT
+sax@1.6.0  —  BlueOak-1.0.0
+secret-manager@6.1.1  —  Apache-2.0
+semver@7.7.4  —  ISC
+send@1.2.1  —  MIT
+serve-static@2.2.1  —  MIT
+serverless-http@3.2.0  —  MIT
+service-error-classification@4.3.1  —  Apache-2.0
+setprototypeof@1.2.0  —  ISC
+sha1-browser@5.2.0  —  Apache-2.0
+sha256-browser@5.2.0  —  Apache-2.0
+sha256-js@5.2.0  —  Apache-2.0
+shared-ini-file-loader@4.4.9  —  Apache-2.0
+shebang-command@2.0.0  —  MIT
+shebang-regex@3.0.0  —  MIT
+side-channel@1.1.0  —  MIT
+side-channel-list@1.0.1  —  MIT
+side-channel-map@1.0.1  —  MIT
+side-channel-weakmap@1.0.2  —  MIT
+sift@17.1.3  —  MIT
+sign@4.1.1  —  Apache-2.0
+signal-exit@4.1.0  —  ISC
+signature-v4@5.3.14  —  Apache-2.0
+signature-v4-multi-region@3.996.23  —  Apache-2.0
+sigstore@4.1.0  —  Apache-2.0
+smart-buffer@4.2.0  —  MIT
+smithy-client@4.12.13  —  Apache-2.0
+socks@2.8.7  —  MIT
+socks-proxy-agent@8.0.5  —  MIT
+sonic-boom@4.2.1  —  MIT
+sparse-bitfield@3.0.3  —  MIT
+spdx-exceptions@2.5.0  —  CC-BY-3.0
+spdx-expression-parse@4.0.0  —  MIT
+spdx-license-ids@3.0.23  —  CC0-1.0
+split2@4.2.0  —  ISC
+sprintf-js@1.1.3  —  BSD-3-Clause
+sql-escaper@1.3.3  —  MIT
+ssh2@1.17.0  —  UNKNOWN
+ssh2-sftp-client@12.1.1  —  Apache-2.0
+ssrf-req-filter@1.1.1  —  MIT
+ssri@13.0.1  —  ISC
+statuses@2.0.2  —  MIT
+stream-events@1.0.5  —  MIT
+stream-shift@1.0.3  —  MIT
+streamsearch@1.1.0  —  UNKNOWN
+string-locale-compare@1.1.0  —  ISC
+string-width@5.1.2  —  MIT
+string-width@4.2.3  —  MIT
+string_decoder@1.3.0  —  MIT
+strip-ansi@6.0.1  —  MIT
+strip-ansi@7.2.0  —  MIT
+strnum@2.2.3  —  MIT
+stubs@3.0.0  —  MIT
+supports-color@10.2.2  —  MIT
+supports-web-crypto@5.2.0  —  Apache-2.0
+tar@7.5.11  —  BlueOak-1.0.0
+tarn@3.0.2  —  MIT
+tedious@18.6.2  —  MIT
+tedious-benchmarks@1.0.0  —  UNKNOWN
+teeny-request@10.1.2  —  Apache-2.0
+text-table@0.2.0  —  MIT
+thread-stream@4.0.0  —  MIT
+tiny-relative-date@2.0.2  —  MIT
+tinyglobby@0.2.15  —  MIT
+toidentifier@1.0.1  —  MIT
+token-providers@3.1038.0  —  Apache-2.0
+tr46@5.1.1  —  MIT
+transport@0.0.1  —  UNKNOWN
+treeverse@3.0.0  —  ISC
+ts-http-runtime@0.3.5  —  MIT
+tslib@2.8.1  —  0BSD
+tuf@4.0.2  —  Apache-2.0
+tuf-js@4.1.0  —  MIT
+tweetnacl@0.14.5  —  Unlicense
+type-is@2.0.1  —  MIT
+typedarray@0.0.6  —  MIT
+types@4.14.1  —  Apache-2.0
+types@3.973.8  —  Apache-2.0
+uncrypto@0.1.3  —  MIT
+undici-types@6.21.0  —  MIT
+unpipe@1.0.0  —  MIT
+url-parser@4.2.14  —  Apache-2.0
+utf8@1.1.1  —  BSD-3-Clause
+util@5.2.0  —  Apache-2.0
+util-arn-parser@3.972.3  —  Apache-2.0
+util-base64@4.3.2  —  Apache-2.0
+util-body-length-browser@4.2.2  —  Apache-2.0
+util-body-length-node@4.2.3  —  Apache-2.0
+util-buffer-from@4.2.2  —  Apache-2.0
+util-buffer-from@2.2.0  —  Apache-2.0
+util-config-provider@4.2.2  —  Apache-2.0
+util-defaults-mode-browser@4.3.49  —  Apache-2.0
+util-defaults-mode-node@4.2.54  —  Apache-2.0
+util-deprecate@1.0.2  —  MIT
+util-endpoints@3.996.8  —  Apache-2.0
+util-endpoints@3.4.2  —  Apache-2.0
+util-format-url@3.972.10  —  Apache-2.0
+util-hex-encoding@4.2.2  —  Apache-2.0
+util-locate-window@3.965.5  —  Apache-2.0
+util-middleware@4.2.14  —  Apache-2.0
+util-retry@4.3.5  —  Apache-2.0
+util-stream@4.5.25  —  Apache-2.0
+util-uri-escape@4.2.2  —  Apache-2.0
+util-user-agent-browser@3.972.10  —  Apache-2.0
+util-user-agent-node@3.973.22  —  Apache-2.0
+util-utf8@4.2.2  —  Apache-2.0
+util-utf8@2.3.0  —  Apache-2.0
+util-waiter@4.3.0  —  Apache-2.0
+uuid@8.3.2  —  MIT
+uuid@1.1.2  —  Apache-2.0
+validate-npm-package-name@7.0.2  —  ISC
+vary@1.1.2  —  MIT
+verify@3.1.0  —  Apache-2.0
+walk-up-path@4.0.0  —  ISC
+web-streams-polyfill@3.3.3  —  MIT
+webidl-conversions@7.0.0  —  BSD-2-Clause
+webidl-conversions@7.0.3  —  MIT
+whatwg-url@14.2.0  —  MIT
+whatwg-url@13.0.0  —  MIT
+which@2.0.2  —  ISC
+which@6.0.1  —  ISC
+wrap-ansi@8.1.0  —  MIT
+wrap-ansi@7.0.0  —  MIT
+wrappy@1.0.2  —  ISC
+write-file-atomic@7.0.1  —  ISC
+wsl-utils@0.1.0  —  MIT
+xml-builder@3.972.21  —  Apache-2.0
+xml2js@0.6.2  —  MIT
+xml2js@0.4.14  —  MIT
+xmlbuilder@11.0.1  —  MIT
+xtend@4.0.2  —  MIT
+y18n@5.0.8  —  ISC
+yallist@5.0.0  —  BlueOak-1.0.0
+yallist@4.0.0  —  ISC
+yargs@17.7.2  —  MIT
+yargs-parser@21.1.1  —  ISC
+yarn@1.22.22  —  BSD-2-Clause
+zod@3.25.76  —  MIT
+
+=== BASE-OS (Debian) SYSTEM PACKAGES (88) ===
+adduser@3.134  —  GPL-2.0-only / GPL-2.0-or-later
+apt@2.6.1  —  BSD-3-Clause / GPL-2.0-only / GPL-2.0-or-later / MIT
+base-files@12.4+deb12u14  —  GPL-2.0-or-later
+base-passwd@3.6.1  —  GPL-2.0-only / public-domain
+bash@5.2.15-2+b13  —  BSD-4-Clause-UC / GFDL-1.3-no-invariants-only / GFDL-1.3-only / GPL-2.0-only / GPL-2.0-or-later / GPL-3.0-only / GPL-3.0-or-later / GPL-3.0-or-later WITH Bison-exception / Latex2e / MIT / permissive
+bsdutils@1:2.38.1-5+deb12u3  —  BSD-3-Clause / BSD-4-Clause / BSLA / GPL-2.0-only / GPL-2.0-or-later / GPL-3.0-only / GPL-3.0-or-later / LGPL-2.0-only / LGPL-2.0-or-later / LGPL-2.1-only / LGPL-2.1-or-later / LGPL-3.0-only / LGPL-3.0-or-later / MIT / public-domain
+coreutils@9.1-1  —  BSD-4-Clause-UC / FSFULLR / GFDL-1.3-no-invariants-only / GFDL-1.3-only / GPL-3.0-only / GPL-3.0-or-later / ISC
+dash@0.5.12-2  —  BSD-3-Clause / GPL-2.0-only / GPL-2.0-or-later / public-domain
+debconf@1.5.82  —  BSD-2-Clause
+debian-archive-keyring@2023.3+deb12u2  —  GPL-2.0-or-later
+debianutils@5.7-0.5~deb12u1  —  GPL-2.0-only / GPL-2.0-or-later / SMAIL-GPL / public-domain
+diffutils@1:3.8-4  —  FSFAP / FSFULLR / GFDL-1.3-no-invariants-only / GFDL-1.3-only / GPL-2.0-only / GPL-2.0-or-later / GPL-3.0-only / GPL-3.0-only WITH autoconf-exception+ / GPL-3.0-or-later / GPL-3.0-or-later WITH texinfo-exception / LGPL-2.0-only / LGPL-2.0-or-later / LGPL-2.1-only / LGPL-2.1-or-later / LGPL-3.0-only / LGPL-3.0-or-later / X11 / public-domain
+dpkg@1.21.23  —  BSD-2-Clause / GPL-2.0-only / GPL-2.0-or-later / public-domain-s-s-d
+e2fsprogs@1.47.0-2+b2  —  Apache-2.0 / BSD-3-Clause / GPL-2.0-only / GPL-2.0-or-later / GPL-2.0-or-later WITH Texinfo-exception / ISC / Kazlib / LGPL-2.0-only / Latex2e / MIT-US-export
+findutils@4.9.0-4  —  BSD-3-Clause / BSD-3-clause-and-or-GPL-3+ / FSFAP / FSFULLR / GFDL-1.3-no-invariants-or-later / GFDL-1.3-only / GPL-2.0-only / GPL-2.0-or-later / GPL-2.0-or-later WITH Autoconf-data-exception / GPL-2.0-or-later WITH automake-exception / GPL-3.0-only / GPL-3.0-or-later / GPL-3.0-or-later WITH Autoconf-data-exception / GPL-3.0-or-later WITH Bison-2.2-exception / ISC / ISC-and-or-LGPL-2.1+ / LGPL-2.0-only / LGPL-2.0-or-later / LGPL-2.1-only / LGPL-2.1-or-later / LGPL-3.0-only / LGPL-3.0-or-later / X11 / public-domain
+gcc-12-base@12.2.0-14+deb12u1  —  Artistic-2.0 / GFDL-1.2-only / GPL-2.0-only / GPL-2.0-or-later / GPL-3.0-only / LGPL-2.0-or-later
+gpgv@2.2.40-1.1+deb12u2  —  BSD-3-Clause / CC0-1.0 / GPL-3.0-only / GPL-3.0-or-later / LGPL-2.1-only / LGPL-2.1-or-later / LGPL-3.0-only / LGPL-3.0-or-later / MIT / RFC-Reference / TinySCHEME / permissive
+grep@3.8-5  —  GPL-3.0-only / GPL-3.0-or-later
+gzip@1.12-1  —  FSF-manpages / GFDL-1.3--no-invariant / GFDL-3 / GPL-3.0-only / GPL-3.0-or-later
+hostname@3.23+nmu1  —  GPL-2.0-only
+init-system-helpers@1.65.2+deb12u1  —  BSD-3-Clause / GPL-2.0-only / GPL-2.0-or-later
+libacl1@2.3.1-3  —  GPL-2.0-only / GPL-2.0-or-later / LGPL-2.0-or-later / LGPL-2.1-only
+libapt-pkg6.0@2.6.1  —  BSD-3-Clause / GPL-2.0-only / GPL-2.0-or-later / MIT
+libattr1@1:2.5.1-4  —  GPL-2.0-only / GPL-2.0-or-later / LGPL-2.0-or-later / LGPL-2.1-only
+libaudit-common@1:3.0.9-1  —  GPL-1.0-only / GPL-2.0-only / LGPL-2.1-only
+libaudit1@1:3.0.9-1  —  GPL-1.0-only / GPL-2.0-only / LGPL-2.1-only
+libblkid1@2.38.1-5+deb12u3  —  BSD-3-Clause / BSD-4-Clause / BSLA / GPL-2.0-only / GPL-2.0-or-later / GPL-3.0-only / GPL-3.0-or-later / LGPL-2.0-only / LGPL-2.0-or-later / LGPL-2.1-only / LGPL-2.1-or-later / LGPL-3.0-only / LGPL-3.0-or-later / MIT / public-domain
+libbz2-1.0@1.0.8-5+b1  —  BSD-3-Clause / GPL-2.0-only
+libc-bin@2.36-9+deb12u14  —  GPL-2.0-only / LGPL-2.1-only
+libc6@2.36-9+deb12u14  —  GPL-2.0-only / LGPL-2.1-only
+libcap-ng0@0.8.3-1+b3  —  GPL-2.0-only / GPL-2.0-or-later / GPL-3.0-only / LGPL-2.1-only / LGPL-2.1-or-later
+libcap2@1:2.66-4+deb12u3+b1  —  BSD-3-Clause / GPL-2.0-only / GPL-2.0-or-later
+libcom-err2@1.47.0-2+b2  —  Apache-2.0 / BSD-3-Clause / GPL-2.0-only / GPL-2.0-or-later / GPL-2.0-or-later WITH Texinfo-exception / ISC / Kazlib / LGPL-2.0-only / Latex2e / MIT-US-export
+libcrypt1@1:4.4.33-2  —  UNKNOWN
+libdb5.3@5.3.28+dfsg2-1  —  Artistic-2.0 / BSD-3-Clause / BSD-3-clause-fjord / GPL-2.0-or-later / GPL-3.0-only / MIT-old / MS-PL / Sleepycat / TCL-like / X11 / Zlib
+libdebconfclient0@0.270  —  BSD-2-Clause / GPL-2.0-only / GPL-2.0-or-later
+libext2fs2@1.47.0-2+b2  —  Apache-2.0 / BSD-3-Clause / GPL-2.0-only / GPL-2.0-or-later / GPL-2.0-or-later WITH Texinfo-exception / ISC / Kazlib / LGPL-2.0-only / Latex2e / MIT-US-export
+libffi8@3.4.4-1  —  GPL-2.0-or-later / GPL-3.0-or-later / LGPL-2.1-or-later / MIT / MPL-1.1 / X11 / public-domain
+libgcc-s1@12.2.0-14+deb12u1  —  UNKNOWN
+libgcrypt20@1.10.1-3  —  GPL-2.0-only / LGPL-2.0-or-later
+libgmp10@2:6.2.1+dfsg1-1.1  —  GPL-2.0-only / GPL-2.0-or-later / GPL-3.0-only / GPL-3.0-or-later / GPL-3.0-or-later WITH Bison-exception / LGPL-3.0-only / LGPL-3.0-or-later
+libgnutls30@3.7.9-2+deb12u7  —  Apache-2.0 / BSD-3-Clause / CC0-1.0 / GFDL-1.3-only / GPL-2.0-or-later / GPL-3.0-only / GPL-3.0-or-later / LGPL-2.0-or-later / LGPL-2.1-only / LGPL-2.1-or-later / LGPL-3.0-only / LGPL-3.0-or-later / MIT
+libgpg-error0@1.46-1  —  BSD-3-Clause / GPL-3.0-only / GPL-3.0-or-later / LGPL-2.1-only / LGPL-2.1-or-later / g10-permissive
+libhogweed6@3.8.1-2  —  GAP / GPL-2.0-only / GPL-2.0-or-later / GPL-3.0-only WITH autoconf-exception+ / GPL-3.0-or-later / LGPL-2.0-only / LGPL-2.0-or-later / LGPL-3.0-or-later / MIT / public-domain
+libidn2-0@2.3.3-1+b1  —  GPL-2.0-only / GPL-2.0-or-later / GPL-3.0-only / GPL-3.0-or-later / LGPL-3.0-only / LGPL-3.0-or-later / Unicode
+liblz4-1@1.9.4-1  —  BSD-2-Clause / GPL-2.0-only / GPL-2.0-or-later
+liblzma5@5.4.1-1  —  Autoconf / GPL-2.0-only / GPL-2.0-or-later / GPL-3.0-only / LGPL-2.0-only / LGPL-2.1-only / LGPL-2.1-or-later / PD / PD-debian / config-h / noderivs / none / permissive-fsf / permissive-nowarranty / probably-PD
+libmd0@1.0.4-2  —  BSD-2-Clause / BSD-2-Clause-NetBSD / BSD-3-Clause / BSD-3-clause-Aaron-D-Gifford / Beerware / ISC / public-domain-md4 / public-domain-md5 / public-domain-sha1
+libmount1@2.38.1-5+deb12u3  —  BSD-3-Clause / BSD-4-Clause / BSLA / GPL-2.0-only / GPL-2.0-or-later / GPL-3.0-only / GPL-3.0-or-later / LGPL-2.0-only / LGPL-2.0-or-later / LGPL-2.1-only / LGPL-2.1-or-later / LGPL-3.0-only / LGPL-3.0-or-later / MIT / public-domain
+libnettle8@3.8.1-2  —  GAP / GPL-2.0-only / GPL-2.0-or-later / GPL-3.0-only WITH autoconf-exception+ / GPL-3.0-or-later / LGPL-2.0-only / LGPL-2.0-or-later / LGPL-3.0-or-later / MIT / public-domain
+libp11-kit0@0.24.1-2  —  Apache-2.0 / BSD-3-Clause / ISC / ISC-IBM / LGPL-2.1-only / LGPL-2.1-or-later / permissive-like-automake-output / same-as-rest-of-p11kit
+libpam-modules@1.5.2-6+deb12u2  —  BSD-3-Clause / BSD-tcp-wrappers / Beerware / GPL-2.0-only / GPL-2.0-or-later / GPL-3.0-only / GPL-3.0-or-later WITH Bison-exception / LGPL-2.0-only / LGPL-2.0-or-later / public-domain
+libpam-modules-bin@1.5.2-6+deb12u2  —  BSD-3-Clause / BSD-tcp-wrappers / Beerware / GPL-2.0-only / GPL-2.0-or-later / GPL-3.0-only / GPL-3.0-or-later WITH Bison-exception / LGPL-2.0-only / LGPL-2.0-or-later / public-domain
+libpam-runtime@1.5.2-6+deb12u2  —  BSD-3-Clause / BSD-tcp-wrappers / Beerware / GPL-2.0-only / GPL-2.0-or-later / GPL-3.0-only / GPL-3.0-or-later WITH Bison-exception / LGPL-2.0-only / LGPL-2.0-or-later / public-domain
+libpam0g@1.5.2-6+deb12u2  —  BSD-3-Clause / BSD-tcp-wrappers / Beerware / GPL-2.0-only / GPL-2.0-or-later / GPL-3.0-only / GPL-3.0-or-later WITH Bison-exception / LGPL-2.0-only / LGPL-2.0-or-later / public-domain
+libpcre2-8-0@10.42-1  —  BSD-2-Clause / BSD-3-Clause / BSD-3-clause-Cambridge WITH BINARY-LIBRARY-LIKE-PACKAGES-exception / X11 / public-domain
+libseccomp2@2.5.4-1+deb12u1  —  LGPL-2.1-only
+libselinux1@3.4-1+b6  —  GPL-2.0-only / LGPL-2.1-only
+libsemanage-common@3.4-1  —  GPL-2.0-or-later / LGPL-2.0-or-later
+libsemanage2@3.4-1+b5  —  GPL-2.0-or-later / LGPL-2.0-or-later
+libsepol2@3.4-2.1  —  GPL-2.0-only / GPL-2.0-or-later / LGPL-2.1-only / LGPL-2.1-or-later / Zlib
+libsmartcols1@2.38.1-5+deb12u3  —  BSD-3-Clause / BSD-4-Clause / BSLA / GPL-2.0-only / GPL-2.0-or-later / GPL-3.0-only / GPL-3.0-or-later / LGPL-2.0-only / LGPL-2.0-or-later / LGPL-2.1-only / LGPL-2.1-or-later / LGPL-3.0-only / LGPL-3.0-or-later / MIT / public-domain
+libss2@1.47.0-2+b2  —  Apache-2.0 / BSD-3-Clause / GPL-2.0-only / GPL-2.0-or-later / GPL-2.0-or-later WITH Texinfo-exception / ISC / Kazlib / LGPL-2.0-only / Latex2e / MIT-US-export
+libstdc++6@12.2.0-14+deb12u1  —  UNKNOWN
+libsystemd0@252.39-1~deb12u2  —  CC0-1.0 / GPL-2.0-only / GPL-2.0-only WITH Linux-syscall-note-exception / GPL-2.0-or-later / LGPL-2.1-only / LGPL-2.1-or-later / MIT / public-domain
+libtasn1-6@4.19.0-2+deb12u1  —  GFDL-1.3-only / GPL-3.0-only / LGPL-2.0-or-later / LGPL-2.1-only
+libtinfo6@6.4-4  —  BSD-3-Clause / MIT-X11 / X11
+libudev1@252.39-1~deb12u2  —  CC0-1.0 / GPL-2.0-only / GPL-2.0-only WITH Linux-syscall-note-exception / GPL-2.0-or-later / LGPL-2.1-only / LGPL-2.1-or-later / MIT / public-domain
+libunistring2@1.0-2  —  FreeSoftware / GFDL-1.2-only / GFDL-1.2-or-later / GPL-2.0-only / GPL-2.0-or-later / GPL-2.0-or-later WITH distribution-exception / GPL-3.0-only / GPL-3.0-or-later / LGPL-3.0-only / LGPL-3.0-or-later / MIT
+libuuid1@2.38.1-5+deb12u3  —  BSD-3-Clause / BSD-4-Clause / BSLA / GPL-2.0-only / GPL-2.0-or-later / GPL-3.0-only / GPL-3.0-or-later / LGPL-2.0-only / LGPL-2.0-or-later / LGPL-2.1-only / LGPL-2.1-or-later / LGPL-3.0-only / LGPL-3.0-or-later / MIT / public-domain
+libxxhash0@0.8.1-1  —  BSD-2-Clause / GPL-2.0-only
+libzstd1@1.5.4+dfsg2-5  —  BSD-3-Clause / GPL-2.0-only / MIT / Zlib
+login@1:4.13+dfsg1-1+deb12u2  —  BSD-3-Clause / GPL-1.0-only / GPL-2.0-only / GPL-2.0-or-later / public-domain
+logsave@1.47.0-2+b2  —  Apache-2.0 / BSD-3-Clause / GPL-2.0-only / GPL-2.0-or-later / GPL-2.0-or-later WITH Texinfo-exception / ISC / Kazlib / LGPL-2.0-only / Latex2e / MIT-US-export
+mawk@1.3.4.20200120-3.1  —  CC-BY-3.0 / GPL-2.0-only / X11
+mount@2.38.1-5+deb12u3  —  BSD-3-Clause / BSD-4-Clause / BSLA / GPL-2.0-only / GPL-2.0-or-later / GPL-3.0-only / GPL-3.0-or-later / LGPL-2.0-only / LGPL-2.0-or-later / LGPL-2.1-only / LGPL-2.1-or-later / LGPL-3.0-only / LGPL-3.0-or-later / MIT / public-domain
+ncurses-base@6.4-4  —  BSD-3-Clause / MIT-X11 / X11
+ncurses-bin@6.4-4  —  BSD-3-Clause / MIT-X11 / X11
+passwd@1:4.13+dfsg1-1+deb12u2  —  BSD-3-Clause / GPL-1.0-only / GPL-2.0-only / GPL-2.0-or-later / public-domain
+perl-base@5.36.0-7+deb12u3  —  Artistic-2 / Artistic-2.0 / Artistic-dist / BSD-3-Clause / BSD-3-Clause WITH weird-numbering / BSD-3-clause-GENERIC / BSD-4-clause-POWERDOG / BZIP / CC0-1.0 / DONT-CHANGE-THE-GPL / GPL-1.0-only / GPL-1.0-or-later / GPL-2.0-only / GPL-2.0-only WITH bison-exception+ / GPL-2.0-or-later / HSIEH-BSD / HSIEH-DERIVATIVE / LGPL-2.1-only / MIT / REGCOMP / RRA-KEEP-THIS-NOTICE / SDBM-PUBLIC-DOMAIN / TEXT-TABS / Unicode / Zlib
+sed@4.9-1+deb12u1  —  BSD-4-Clause-UC / BSL-1 / GFDL-1.3-no-invariants-or-later / GFDL-1.3-only / GPL-3.0-only / GPL-3.0-or-later / ISC / X11 / pcre
+sysvinit-utils@3.06-4  —  GPL-2.0-only / GPL-2.0-or-later / GPL-3.0-only
+tar@1.34+dfsg-1.2+deb12u1  —  GPL-2.0-only / GPL-2.0-or-later / GPL-3.0-only / GPL-3.0-or-later / GPL-3.0-or-later WITH Bison-exception / LGPL-3.0-only / LGPL-3.0-or-later
+tzdata@2026b-0+deb12u1  —  public-domain
+usr-is-merged@37~deb12u1  —  GPL-2.0-only / GPL-2.0-or-later
+util-linux@2.38.1-5+deb12u3  —  BSD-3-Clause / BSD-4-Clause / BSLA / GPL-2.0-only / GPL-2.0-or-later / GPL-3.0-only / GPL-3.0-or-later / LGPL-2.0-only / LGPL-2.0-or-later / LGPL-2.1-only / LGPL-2.1-or-later / LGPL-3.0-only / LGPL-3.0-or-later / MIT / public-domain
+util-linux-extra@2.38.1-5+deb12u3  —  BSD-3-Clause / BSD-4-Clause / BSLA / GPL-2.0-only / GPL-2.0-or-later / GPL-3.0-only / GPL-3.0-or-later / LGPL-2.0-only / LGPL-2.0-or-later / LGPL-2.1-only / LGPL-2.1-or-later / LGPL-3.0-only / LGPL-3.0-or-later / MIT / public-domain
+zlib1g@1:1.2.13.dfsg-1  —  Zlib
