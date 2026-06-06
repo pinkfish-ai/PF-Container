@@ -152,10 +152,18 @@ put() { aws ssm put-parameter --type SecureString --overwrite \
 
 put /pinkconnect/mongodb-uri          "$MONGO_URI"
 put /pinkconnect/oauth-encryption-key "$(openssl rand -base64 32)"
-put /pinkconnect/token-encryption-key "$(openssl rand -base64 32)"
+put /pinkconnect/token-encryption-key "$(openssl rand -hex 32)"
 put /pinkconnect/admin-token          "$(openssl rand -hex 32)"
 put /pinkconnect/jwt-public-key       "$(cat pinkfish-connections-admin-app-main/keys/public.pem)"
 ```
+
+> **`token-encryption-key` MUST be 64 hex chars (`openssl rand -hex 32`), not
+> base64.** The container decodes it with `Buffer.from(key, 'hex')` and uses it
+> as a 32-byte AES-256-GCM key; a base64 value yields the wrong length and
+> **every OAuth connection fails at token storage** with
+> `ERR_CRYPTO_INVALID_KEYLEN` (the connection lands in `error`, API-key
+> connections are unaffected). `oauth-encryption-key` is different — the
+> container SHA-256-hashes it, so any string works there.
 
 **Treat `oauth-encryption-key` and `token-encryption-key` like a
 database master password** — losing them makes every stored
