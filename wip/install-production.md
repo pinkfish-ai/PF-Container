@@ -221,10 +221,18 @@ put() { aws ssm put-parameter --type SecureString --overwrite \
 
 put /pinkconnect-prod/mongodb-uri          "$MONGO_URI"
 put /pinkconnect-prod/oauth-encryption-key "$(openssl rand -base64 32)"
-put /pinkconnect-prod/token-encryption-key "$(openssl rand -base64 32)"
+put /pinkconnect-prod/token-encryption-key "$(openssl rand -hex 32)"
 put /pinkconnect-prod/admin-token          "$(openssl rand -hex 32)"
 put /pinkconnect-prod/jwt-public-key       "$(cat pinkfish-connections-admin-app-main/keys/public.pem)"
 ```
+
+> **`token-encryption-key` MUST be 64 hex chars (`openssl rand -hex 32`), not
+> base64.** The container decodes it with `Buffer.from(key, 'hex')` and uses it
+> as a 32-byte AES-256-GCM key; a base64 value yields the wrong length and
+> **every OAuth connection fails at token storage** with
+> `ERR_CRYPTO_INVALID_KEYLEN` (the connection lands in `error`, API-key
+> connections are unaffected). `oauth-encryption-key` is different — the
+> container SHA-256-hashes it, so any string works there.
 
 Note the prefix is `/pinkconnect-prod/` to keep prod secrets distinct
 from any smoke deploy in the same account. The ECS stack's
